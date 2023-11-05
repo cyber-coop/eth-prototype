@@ -1,0 +1,43 @@
+[package]
+name = "eth-prototype"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "eth-prototype"
+path = "src/main.rs"
+
+[lib]
+name = "eth_prototype"
+path = "src/lib.rs"
+
+
+[dependencies]
+hex = { version = "0.4.3", features = ["serde"] }
+k256 = { version = "0.13", features = ["ecdh", "ecdsa-core", "arithmetic"] }
+rlp = "0.5.2"
+byteorder = "1.4.3"
+rand_core = "0.6.4"
+hmac-sha256 = "1.1.6"
+ctr = "0.9.2"
+ecb = "0.1.1"
+aes = "0.8.2"
+sha3 = "0.10.8"
+secp256k1 = { version = "0.27", features = ["recovery", "global-context"] }
+secp256k1_20 = { package = "secp256k1", version = "0.20", features = ["recovery", "global-context"] }
+snap = "1.1.0"
+postgres = { version = "0.19.4" }
+arrayvec = "0.5"
+primitive-types = { version = "0.12.1", features = ["impl-rlp"] }
+log = "0.4.17"
+env_logger = "0.10.0"
+toml = "0.8.0"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+devp2p = { git = "https://github.com/rllola/devp2p" }
+
+ethereum-types = "0.14.1"
+tx-from-scratch = { git = "https://github.com/Kuly14/tx-from-scratch" }
+web3 = "0.18.0"
