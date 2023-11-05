@@ -35,5 +35,5 @@ To facilitate things, we have provided a `docker-compose.yml` file that the star
 
 ## License
 
-![WTFPL](https://en.wikipedia.org/wiki/File:WTFPL_logo.svg)
+![WTFPL](http://www.wtfpl.net/wp-content/uploads/2012/12/logo-220x1601.png)
 DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
