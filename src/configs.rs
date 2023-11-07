@@ -19,7 +19,6 @@ pub struct Peer {
     pub remote_id: Vec<u8>, // [u8; 64]
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub database: DatabaseConfig,

@@ -1,7 +1,7 @@
-use tx_from_scratch::Transaction;
 use ethereum_types::H160;
-use std::str::FromStr;
 use rlp::{Encodable, RlpStream};
+use std::str::FromStr;
+use tx_from_scratch::Transaction;
 use web3::signing::recover;
 
 fn main() {
@@ -12,7 +12,6 @@ fn main() {
 
         gas_price: 20000000000,
         gas: 21005,
-
 
         // To Address
         to: Some(
@@ -31,7 +30,6 @@ fn main() {
         ..Default::default()
     };
 
-
     let mut stream = RlpStream::new();
     tx.rlp_append(&mut stream);
     stream.append(&tx.chain_id);
@@ -48,5 +46,4 @@ fn main() {
         &hex::decode("1cb88761e7336a401894aa9e5faf0daa20b2ea3b46266ba349fa3f22a09d44fd7f4696182980f316ac96b9da3bcd89474edf783cc1bab9ee6553e84aa931b8bd").unwrap(),
         27,
     );
-
 }

@@ -5,7 +5,8 @@ use std::time::Instant;
 use crate::types::{Block, Transaction};
 
 pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
-    let query = format!("CREATE SCHEMA IF NOT EXISTS {schema_name};
+    let query = format!(
+        "CREATE SCHEMA IF NOT EXISTS {schema_name};
     CREATE TABLE IF NOT EXISTS {schema_name}.blocks (
         height OID NOT NULL,
         hash BYTEA,
@@ -25,13 +26,11 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         r BYTEA NOT NULL,
         s BYTEA NOT NULL,
         raw BYTEA
-    );");
+    );"
+    );
 
-    postgres_client
-        .batch_execute(&query)
-        .unwrap();
+    postgres_client.batch_execute(&query).unwrap();
 }
-
 
 pub fn save_blocks(
     blocks: &Vec<(Block, Vec<Transaction>)>,
@@ -42,7 +41,6 @@ pub fn save_blocks(
     let now = Instant::now();
     let mut blocks_string: String = String::new();
     let mut transactions_string: String = String::new();
-
 
     info!("starting to format blocks and transactions");
     blocks.iter().for_each(|(b, txs)| {
@@ -73,28 +71,25 @@ pub fn save_blocks(
             );
 
             transactions_string.push_str(&tmp);
-
         });
     });
     info!("Finished formating blocks and transactions message");
 
     let mut block_writer = postgres_client
-    .copy_in(format!("COPY {}.blocks FROM stdin (DELIMITER ',')", schema_name).as_str())
-    .unwrap();
-    block_writer
-        .write_all(blocks_string.as_bytes())
+        .copy_in(format!("COPY {}.blocks FROM stdin (DELIMITER ',')", schema_name).as_str())
         .unwrap();
+    block_writer.write_all(blocks_string.as_bytes()).unwrap();
     block_writer.finish().unwrap();
 
     let mut transaction_writer = postgres_client
-    .copy_in(
-        format!(
-            "COPY {}.transactions FROM stdin (DELIMITER ',')",
-            schema_name
+        .copy_in(
+            format!(
+                "COPY {}.transactions FROM stdin (DELIMITER ',')",
+                schema_name
+            )
+            .as_str(),
         )
-        .as_str(),
-    )
-    .unwrap();
+        .unwrap();
     transaction_writer
         .write_all(transactions_string.as_bytes())
         .unwrap();
