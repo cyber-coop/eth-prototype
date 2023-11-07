@@ -1,11 +1,17 @@
-use sha3::{Keccak256, Digest};
+use sha3::{Digest, Keccak256};
 
 use super::constants::BASE_PROTOCOL_OFFSET;
-use crate::types::{Block, Transaction};
 use crate::message::parse_transaction;
+use crate::types::{Block, Transaction};
 
 // Create status message following the ETH protocol
-pub fn create_status_message(genesis_hash: &Vec<u8>, head_hash: &Vec<u8>, head_td: &u64, fork_id: &Vec<u32>, network_id: &u32) -> Vec<u8> {
+pub fn create_status_message(
+    genesis_hash: &Vec<u8>,
+    head_hash: &Vec<u8>,
+    head_td: &u64,
+    fork_id: &Vec<u32>,
+    network_id: &u32,
+) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // Protocol version
@@ -50,7 +56,12 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     return blockhash;
 }
 
-pub fn create_get_block_headers_message(hash: &Vec<u8>, block_num: usize, skip: usize, reverse: bool) -> Vec<u8> {
+pub fn create_get_block_headers_message(
+    hash: &Vec<u8>,
+    block_num: usize,
+    skip: usize,
+    reverse: bool,
+) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // req ID
@@ -65,7 +76,9 @@ pub fn create_get_block_headers_message(hash: &Vec<u8>, block_num: usize, skip: 
     s.append(&skip);
     // reverse
     let mut r = 0_u8;
-    if reverse { r = 1_u8; };
+    if reverse {
+        r = 1_u8;
+    };
     s.append(&r);
 
     s.finalize_unbounded_list();
@@ -90,7 +103,7 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
     let block_headers = r.at(1).unwrap();
 
     assert!(block_headers.is_list());
-    
+
     let mut hashes = vec![];
     let count = block_headers.item_count().unwrap();
     for i in 0..count {
@@ -113,15 +126,20 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
         // let block_nonce = block_header.at(14).unwrap().as_raw();
         //let basefee_per_gas: u32 = block_header.at(15).unwrap().as_val().unwrap();
 
-        // get hash 
+        // get hash
         let mut hasher = Keccak256::new();
         hasher.update(block_header.as_raw());
         let hash = hasher.finalize();
-        hashes.push(Block { number, hash: hash.to_vec(), parenthash: parent_hash.to_vec(), extradata: extradata.to_vec() } );
+        hashes.push(Block {
+            number,
+            hash: hash.to_vec(),
+            parenthash: parent_hash.to_vec(),
+            extradata: extradata.to_vec(),
+        });
 
         info!("Block hash : {}", hex::encode(&hash));
         info!("Number : {}", number);
-    };
+    }
 
     return hashes;
 }

@@ -1,5 +1,5 @@
 use arrayvec::ArrayString;
-use rlp::{Decodable, DecoderError, Rlp, Encodable, RlpStream};
+use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 
 #[derive(Clone, Debug)]
 pub struct HelloMessage {
@@ -102,7 +102,6 @@ pub struct Block {
     pub parenthash: Vec<u8>,
     pub extradata: Vec<u8>,
 }
-
 
 #[cfg(test)]
 mod tests {
