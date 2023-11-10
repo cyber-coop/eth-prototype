@@ -29,7 +29,7 @@ id = "00000000000000000000000000000000000000000000000000000000000000000000000000
 
 ### Docker compose
 
-To facilitate things, we have provided a `docker-compose.yml` file that the start the indexer and the postgres database.
+To facilitate things, we have provided a `docker-compose.yml` file under the `contrib` folder that the start the indexer and the postgres database.
 
 **NOTE**: There is some modification to in the docker compose file to make the databse persistent.
 

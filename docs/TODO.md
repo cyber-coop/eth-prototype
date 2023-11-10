@@ -3,7 +3,7 @@
 - [x] Create `setup_frame` function in `utils.rs`
 - [x] Bigint value in sql not big enought
 - [x] RLP too long error
-- [ ] More networks:
+- [x] More networks:
     * [x] ~~Rinkeby~~ Deprecated
     * [x] Sepolia
     * [x] Goerli
@@ -18,3 +18,4 @@
 - [x] Peer info in the config file instead of hardcoded
 - [ ] Generate randomly data that should be genereated randomly
 - [x] Move tests from `main.rs` in their own folder to clear things
+- [ ] Publish image to docker hub. Make it easier to deploy.

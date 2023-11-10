@@ -240,10 +240,7 @@ fn main() {
 
         // while recv save blocks in database
         loop {
-            let mut blocks: Vec<(Block, Vec<Transaction>)> = vec![];
-
-            blocks = rx.recv().unwrap();
-
+            let blocks: Vec<(Block, Vec<Transaction>)> = rx.recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -263,9 +260,6 @@ fn main() {
      ****************************/
 
     loop {
-        // To remove
-        // current_block_num = 12964989;
-
         /******************
          *
          *  Send GetBlockHeaders message
