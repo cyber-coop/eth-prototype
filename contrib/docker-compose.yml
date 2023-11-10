@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   indexer_ethereum_mainnet:
-    build: .
+    build: ../.
     container_name: "indexer-ethereum-mainnet"
     restart: unless-stopped
     environment:
