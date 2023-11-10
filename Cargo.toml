@@ -8,6 +8,10 @@ edition = "2021"
 name = "eth-prototype"
 path = "src/main.rs"
 
+[[bench]]
+name = "indexer-benchmark"
+path = "bench/main.rs"
+
 [lib]
 name = "eth_prototype"
 path = "src/lib.rs"
