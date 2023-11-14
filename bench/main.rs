@@ -117,10 +117,9 @@ fn bench_insert(b: &mut Bencher) {
     });
 
     blocks_string.replace_range(blocks_string.len() - 1..blocks_string.len(), ";");
-    
+
     b.iter(|| {
         postgres_client.execute(&blocks_string, &[]).unwrap();
-
     })
 }
 
@@ -140,7 +139,7 @@ fn bench_copy_in_blocks_and_txs(b: &mut Bencher) {
     while txs_bin.len() > 0 {
         let size = usize::from_be_bytes(txs_bin[0..8].try_into().unwrap());
         // we removed a byte so length is size-1
-        let data = txs_bin[8..size+8-1].to_vec();
+        let data = txs_bin[8..size + 8 - 1].to_vec();
         let tmp = eth::parse_block_bodies(data);
 
         let t_iter = tmp.iter();
@@ -148,9 +147,8 @@ fn bench_copy_in_blocks_and_txs(b: &mut Bencher) {
             blocks.push((block_headers[i].clone(), txs.to_vec()));
         });
 
-        txs_bin = txs_bin[size+8-1..].to_vec();
-    };
-
+        txs_bin = txs_bin[size + 8 - 1..].to_vec();
+    }
 
     let query = format!(
         "CREATE SCHEMA IF NOT EXISTS tmp;
@@ -221,16 +219,12 @@ fn bench_copy_in_blocks_and_txs(b: &mut Bencher) {
         block_writer.finish().unwrap();
 
         let mut transaction_writer = postgres_client
-        .copy_in(
-            format!(
-                "COPY tmp.transactions FROM stdin (DELIMITER ',')")
-            .as_str(),
-        )
-        .unwrap();
-    transaction_writer
-        .write_all(transactions_string.as_bytes())
-        .unwrap();
-    transaction_writer.finish().unwrap();
+            .copy_in(format!("COPY tmp.transactions FROM stdin (DELIMITER ',')").as_str())
+            .unwrap();
+        transaction_writer
+            .write_all(transactions_string.as_bytes())
+            .unwrap();
+        transaction_writer.finish().unwrap();
     })
 }
 
@@ -250,7 +244,7 @@ fn bench_insert_blocks_and_txs(b: &mut Bencher) {
     while txs_bin.len() > 0 {
         let size = usize::from_be_bytes(txs_bin[0..8].try_into().unwrap());
         // we removed a byte so length is size-1
-        let data = txs_bin[8..size+8-1].to_vec();
+        let data = txs_bin[8..size + 8 - 1].to_vec();
         let tmp = eth::parse_block_bodies(data);
 
         let t_iter = tmp.iter();
@@ -258,8 +252,8 @@ fn bench_insert_blocks_and_txs(b: &mut Bencher) {
             blocks.push((block_headers[i].clone(), txs.to_vec()));
         });
 
-        txs_bin = txs_bin[size+8-1..].to_vec();
-    };
+        txs_bin = txs_bin[size + 8 - 1..].to_vec();
+    }
 
     let query = format!(
         "CREATE SCHEMA IF NOT EXISTS tmp;
@@ -323,11 +317,13 @@ fn bench_insert_blocks_and_txs(b: &mut Bencher) {
     });
 
     blocks_string.replace_range(blocks_string.len() - 1..blocks_string.len(), ";");
-    transactions_string.replace_range(transactions_string.len() - 1..transactions_string.len(), ";");
-    
+    transactions_string.replace_range(
+        transactions_string.len() - 1..transactions_string.len(),
+        ";",
+    );
+
     b.iter(|| {
         postgres_client.execute(&blocks_string, &[]).unwrap();
         postgres_client.execute(&transactions_string, &[]).unwrap();
-
     })
 }
