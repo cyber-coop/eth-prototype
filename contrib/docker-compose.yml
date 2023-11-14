@@ -10,7 +10,7 @@ services:
       RUST_LOG: "eth_prototype=info"
       NETWORK: "ethereum_mainnet"
     volumes:
-      - ./config.toml:/config.toml
+      - ../config.toml:/config.toml
     depends_on:
       postgres:
         condition: service_healthy

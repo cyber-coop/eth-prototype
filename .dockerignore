@@ -1,0 +1,20 @@
+# folders
+archive
+target
+data
+scripts
+bench
+examples
+docs
+.git
+.github
+tests
+
+# unused file
+config.toml
+docker-compose.*.yml
+Makefile.*
+COPYING
+LICENSE
+Makefile
+README.md
