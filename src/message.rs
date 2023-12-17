@@ -128,11 +128,17 @@ pub fn create_hello_message(private_key: &Vec<u8>) -> Vec<u8> {
     let hello = HelloMessage {
         protocol_version: BASE_PROTOCOL_VERSION,
         client_version: String::from("deadbrain corp."),
-        // support eth66 and les4 (maybe we can support more ?)
-        capabilities: vec![CapabilityMessage {
-            name: CapabilityName(ArrayString::from("eth").unwrap()),
-            version: 66,
-        }],
+        capabilities: vec![
+            //CapabilityMessage{ name: CapabilityName(ArrayString::from("eth").unwrap()), version: 66 },
+            CapabilityMessage {
+                name: CapabilityName(ArrayString::from("eth").unwrap()),
+                version: 67,
+            },
+            CapabilityMessage {
+                name: CapabilityName(ArrayString::from("eth").unwrap()),
+                version: 68,
+            },
+        ],
         // capabilities: vec![types::CapabilityMessage{ name: types::CapabilityName(ArrayString::from("les").unwrap()), version: 4 }],
         port: 0,
         id: primitive_types::H512::from_slice(

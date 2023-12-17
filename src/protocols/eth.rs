@@ -15,7 +15,8 @@ pub fn create_status_message(
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // Protocol version
-    s.append(&66_u8);
+    // TODO: find the highest matching protocol
+    s.append(&68_u8);
     // network Id
     s.append(network_id);
     // head Td
@@ -44,6 +45,7 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
+    dbg!(hex::encode(&message));
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
 
