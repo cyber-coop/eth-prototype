@@ -32,3 +32,9 @@ $ SELECT DISTINCT toaddress FROM ethereum_rinkeby.transactions;
 ```
 
 We can't get all the from addresses because we need to recover from signature.
+
+## Look at transactions per contract
+
+```
+CREATE MATERIALIZED VIEW contracts AS SELECT c.address, COUNT(DISTINCT t.txid) FROM ethereum_mainnet.transactions t RIGHT JOIN ethereum_mainnet.contracts c ON c.address = t.toaddress GROUP BY c.address;
+```

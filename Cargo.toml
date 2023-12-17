@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [[bench]]
 name = "indexer-benchmark"
-path = "bench/main.rs"
+path = "bench/mod.rs"
 
 [lib]
 name = "eth_prototype"
@@ -45,3 +45,7 @@ devp2p = { git = "https://github.com/rllola/devp2p" }
 ethereum-types = "0.14.1"
 tx-from-scratch = { git = "https://github.com/Kuly14/tx-from-scratch" }
 web3 = "0.18.0"
+
+# benchmark
+reqwest = {version = "0.11.22", features = ["blocking", "json"]}
+serde_json = { version = "1.0" }
