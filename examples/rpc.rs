@@ -1,7 +1,7 @@
-use std::time::Instant;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::prelude::*;
 use std::net::TcpStream;
+use std::time::Instant;
 
 use eth_prototype::protocols::eth;
 use eth_prototype::types::Transaction;
@@ -90,7 +90,7 @@ fn main() {
      *
      ******************/
 
-     println!("ACK message received");
+    println!("ACK message received");
     let decrypted =
         utils::decrypt_message(&payload.to_vec(), &shared_mac_data.to_vec(), &private_key);
 
@@ -141,7 +141,7 @@ fn main() {
      *
      ******************/
 
-     println!("Sending HELLO message");
+    println!("Sending HELLO message");
     let hello = message::create_hello_message(&private_key);
     utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes);
 
@@ -151,7 +151,7 @@ fn main() {
      *
      ******************/
 
-     println!("Sending STATUS message");
+    println!("Sending STATUS message");
 
     let genesis_hash = network.genesis_hash.to_vec();
     let head_td = 0;
@@ -174,10 +174,9 @@ fn main() {
      *
      ******************/
 
-     println!("Handling STATUS message");
+    println!("Handling STATUS message");
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
-
 
     /****************************
      *
@@ -191,7 +190,7 @@ fn main() {
      *
      ******************/
 
-     println!("Sending GetBlockHeaders message");
+    println!("Sending GetBlockHeaders message");
     let get_blocks_headers =
         eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, true);
     utils::send_message(
@@ -207,7 +206,7 @@ fn main() {
      *
      ******************/
 
-     println!("Handling BlockHeaders message");
+    println!("Handling BlockHeaders message");
     let mut uncrypted_body: Vec<u8>;
     let mut code;
     loop {
@@ -244,7 +243,7 @@ fn main() {
      *  Send GetBlockBodies message
      *
      ******************/
-     println!("Sending GetBlockBodies message");
+    println!("Sending GetBlockBodies message");
     let hashes = block_headers
         .iter()
         .map(|b| b.hash.clone())
@@ -268,7 +267,7 @@ fn main() {
          *
          ******************/
 
-         println!(
+        println!(
             "Handling BlockBodies message ({}/{BLOCK_NUM} txs received)",
             transactions.len()
         );
