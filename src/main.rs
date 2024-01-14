@@ -223,6 +223,8 @@ fn main() {
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
+    current_hash = hex::decode("58dbd32e4bc03b8bc839411fa85c2cf9ca3e60cb5a5784245b9a9076806ad494").unwrap();
+
     /********************
      *
      *  Start database thread
@@ -328,7 +330,7 @@ fn main() {
 
         let mut transactions: Vec<Vec<Transaction>> = vec![];
 
-        while transactions.len() < BLOCK_NUM {
+        while transactions.len() < hashes.len() {
             let get_blocks_bodies =
                 eth::create_get_block_bodies_message(&hashes[transactions.len()..].to_vec());
             utils::send_message(
@@ -390,6 +392,11 @@ fn main() {
         // send blocks to the other thread to save in database
         if blocks.len() > 0 {
             tx.send(blocks).unwrap();
+        }
+
+        if current_height == 0 {
+            info!("Data fully synced");
+            break;
         }
     }
 }
