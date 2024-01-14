@@ -1,0 +1,23 @@
+name: Publish Docker image
+
+# on:
+#   release:
+#     types: [published]
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  push_to_registry:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      
+      - name: Log in to Docker Hub
+        run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        run: docker build . --file Dockerfile --tag eth-prototype:${{ github.ref_name }}
