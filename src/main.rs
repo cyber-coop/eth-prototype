@@ -223,7 +223,8 @@ fn main() {
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
-    current_hash = hex::decode("58dbd32e4bc03b8bc839411fa85c2cf9ca3e60cb5a5784245b9a9076806ad494").unwrap();
+    current_hash =
+        hex::decode("58dbd32e4bc03b8bc839411fa85c2cf9ca3e60cb5a5784245b9a9076806ad494").unwrap();
 
     /********************
      *
