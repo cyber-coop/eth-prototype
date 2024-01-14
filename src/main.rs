@@ -1,4 +1,6 @@
 use byteorder::{BigEndian, ReadBytesExt};
+use secp256k1::rand::RngCore;
+use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
@@ -59,6 +61,7 @@ fn main() {
             }
         }
     }
+    info!("Connected to database");
 
     // create the tables if they don't exist
     database::create_tables(&network_arg, &mut postgres_client);
@@ -89,16 +92,15 @@ fn main() {
         TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
     let remote_id = config.peer.remote_id;
 
-    let private_key =
-        hex::decode("472D4B6150645267556B58703273357638792F423F4528482B4D625165546856").unwrap();
-    // Should be generated randomly
-    let nonce =
-        hex::decode("09267e7d55aada87e46468b2838cc616f084394d6d600714b58ad7a3a2c0c870").unwrap();
-    // Epheremal private key (should be random)
-    let ephemeral_privkey =
-        hex::decode("691bb7a2fd6647eae78a235b9d305d09f796fe8e8ce7a18aa1aa1deff9649a02").unwrap();
-    // Pad (should be generated randomly)
-    let pad = hex::decode("eb035e803db3b2dea4a2c724739e7edaecb14ef242f5f4df58386b10626ab4887cc84d9dea153f24526200f4089946f4c4b26c283ac7e923e0c53dd1de83682df2fe44f4fe841c480465b38533e30c373ccb0022b95d722d577828862c9fe7e87e5e730bdecd4f358c7673e0999a06190f03e6d0ca98dae5aae8f16ca81c92").unwrap();
+    let private_key = SecretKey::new(&mut rand::thread_rng())
+        .secret_bytes()
+        .to_vec();
+    let mut nonce = vec![0; 32];
+    rand::thread_rng().fill_bytes(&mut nonce);
+    let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng())
+        .secret_bytes()
+        .to_vec();
+    let pad = vec![0; 100]; // should be generated randomly but we don't really care
 
     /******************
      *
