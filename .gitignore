@@ -3,5 +3,6 @@ target
 data
 scripts
 config.toml
+config.*.toml
 docker-compose.*.yml
 Makefile.*

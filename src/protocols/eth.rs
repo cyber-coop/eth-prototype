@@ -15,7 +15,8 @@ pub fn create_status_message(
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // Protocol version
-    s.append(&66_u8);
+    // TODO: find the highest matching protocol
+    s.append(&68_u8);
     // network Id
     s.append(network_id);
     // head Td

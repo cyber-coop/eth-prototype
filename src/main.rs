@@ -202,7 +202,6 @@ fn main() {
     let fork_id = network.fork_id.to_vec();
     let network_id = network.network_id;
 
-    // let status = message::create_status_message(&genesis_hash, &genesis_hash, &head_td, &fork_id, &network_id);
     let status = eth::create_status_message(
         &genesis_hash,
         &genesis_hash,
