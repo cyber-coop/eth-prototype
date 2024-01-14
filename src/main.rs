@@ -1,6 +1,6 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use secp256k1::{rand, SecretKey};
 use secp256k1::rand::RngCore;
+use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
@@ -92,10 +92,14 @@ fn main() {
         TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
     let remote_id = config.peer.remote_id;
 
-    let private_key = SecretKey::new(&mut rand::thread_rng()).secret_bytes().to_vec();
+    let private_key = SecretKey::new(&mut rand::thread_rng())
+        .secret_bytes()
+        .to_vec();
     let mut nonce = vec![0; 32];
     rand::thread_rng().fill_bytes(&mut nonce);
-    let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng()).secret_bytes().to_vec();
+    let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng())
+        .secret_bytes()
+        .to_vec();
     let pad = vec![0; 100]; // should be generated randomly but we don't really care
 
     /******************
