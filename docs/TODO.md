@@ -16,6 +16,6 @@
 - [x] Handle all kinds of tx. Add optional `raw_tx` for not legacy tx. (https://eips.ethereum.org/EIPS/eip-1559)
 - [x] Fix the ping being answer when saving block (and it takes more than 20 seconds)
 - [x] Peer info in the config file instead of hardcoded
-- [ ] Generate randomly data that should be genereated randomly
+- [x] Generate randomly data that should be genereated randomly
 - [x] Move tests from `main.rs` in their own folder to clear things
 - [ ] Publish image to docker hub. Make it easier to deploy.
