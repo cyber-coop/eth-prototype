@@ -41,6 +41,9 @@ pub fn save_blocks(
     let now = Instant::now();
     let mut blocks_string: String = String::new();
     let mut transactions_string: String = String::new();
+    // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
+    let mut transactions_strings: Vec<String> = vec![];
+
 
     info!("starting to format blocks and transactions");
     blocks.iter().for_each(|(b, txs)| {
@@ -70,9 +73,17 @@ pub fn save_blocks(
                 hex::encode(&t.raw),
             );
 
+            // verifying if we are not going over the 1Gigabyte limit if yes we start a new copy in query
+            if transactions_string.as_bytes().len() + tmp.as_bytes().len() > 1000000000 {
+                transactions_strings.push(transactions_string.clone());
+                transactions_string = String::new();
+            }
             transactions_string.push_str(&tmp);
+
         });
     });
+    transactions_strings.push(transactions_string.clone());
+
     info!("Finished formating blocks and transactions message");
 
     // start a transaction to do rollback in case something goes wrong
@@ -83,19 +94,23 @@ pub fn save_blocks(
     block_writer.write_all(blocks_string.as_bytes()).unwrap();
     block_writer.finish().unwrap();
 
-    let mut transaction_writer = transaction
-        .copy_in(
-            format!(
-                "COPY {}.transactions FROM stdin (DELIMITER ',')",
-                schema_name
+
+    for txs in transactions_strings {
+        let mut transaction_writer = transaction
+            .copy_in(
+                format!(
+                    "COPY {}.transactions FROM stdin (DELIMITER ',')",
+                    schema_name
+                )
+                .as_str(),
             )
-            .as_str(),
-        )
-        .unwrap();
-    transaction_writer
-        .write_all(transactions_string.as_bytes())
-        .unwrap();
-    transaction_writer.finish().unwrap();
+            .unwrap();
+        transaction_writer
+            .write_all(txs.as_bytes())
+            .unwrap();
+        transaction_writer.finish().unwrap();
+    }
+
     // commit the transaction
     transaction.commit().unwrap();
 
