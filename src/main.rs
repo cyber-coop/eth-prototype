@@ -223,7 +223,7 @@ fn main() {
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
-    // If we do't have blocks in the database we use the best one 
+    // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         current_hash = their_current_hash;
     }
