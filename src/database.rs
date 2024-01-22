@@ -44,7 +44,6 @@ pub fn save_blocks(
     // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
     let mut transactions_strings: Vec<String> = vec![];
 
-
     info!("starting to format blocks and transactions");
     blocks.iter().for_each(|(b, txs)| {
         let tmp = format!(
@@ -79,7 +78,6 @@ pub fn save_blocks(
                 transactions_string = String::new();
             }
             transactions_string.push_str(&tmp);
-
         });
     });
     transactions_strings.push(transactions_string.clone());
@@ -94,7 +92,6 @@ pub fn save_blocks(
     block_writer.write_all(blocks_string.as_bytes()).unwrap();
     block_writer.finish().unwrap();
 
-
     for txs in transactions_strings {
         let mut transaction_writer = transaction
             .copy_in(
@@ -105,9 +102,7 @@ pub fn save_blocks(
                 .as_str(),
             )
             .unwrap();
-        transaction_writer
-            .write_all(txs.as_bytes())
-            .unwrap();
+        transaction_writer.write_all(txs.as_bytes()).unwrap();
         transaction_writer.finish().unwrap();
     }
 
