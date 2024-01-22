@@ -75,13 +75,15 @@ pub fn save_blocks(
     });
     info!("Finished formating blocks and transactions message");
 
-    let mut block_writer = postgres_client
+    // start a transaction to do rollback in case something goes wrong
+    let mut transaction = postgres_client.transaction().unwrap();
+    let mut block_writer = transaction
         .copy_in(format!("COPY {}.blocks FROM stdin (DELIMITER ',')", schema_name).as_str())
         .unwrap();
     block_writer.write_all(blocks_string.as_bytes()).unwrap();
     block_writer.finish().unwrap();
 
-    let mut transaction_writer = postgres_client
+    let mut transaction_writer = transaction
         .copy_in(
             format!(
                 "COPY {}.transactions FROM stdin (DELIMITER ',')",
@@ -94,6 +96,8 @@ pub fn save_blocks(
         .write_all(transactions_string.as_bytes())
         .unwrap();
     transaction_writer.finish().unwrap();
+    // commit the transaction
+    transaction.commit().unwrap();
 
     let current_height = blocks.last().unwrap().0.number;
 
