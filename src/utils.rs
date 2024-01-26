@@ -4,7 +4,10 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use hmac_sha256::{Hash, HMAC};
 use rand_core::{OsRng, RngCore};
 use sha3::{Digest, Keccak256};
+use std::borrow::BorrowMut;
 use std::io::prelude::*;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -327,15 +330,18 @@ pub fn create_body(
 pub fn send_message(
     msg: Vec<u8>,
     stream: &mut std::net::TcpStream,
-    egress_mac: &mut mac::MAC,
-    egress_aes: &mut Aes256Ctr64BE,
+    egress_mac: &Arc<Mutex<mac::MAC>>,
+    egress_aes: &Arc<Mutex<Aes256Ctr64BE>>,
 ) {
-    let header = create_header(msg.len(), egress_mac, egress_aes);
+    let mut egress_aes = egress_aes.lock().unwrap();
+    let mut egress_mac = egress_mac.lock().unwrap();
+
+    let header = create_header(msg.len(), egress_mac.borrow_mut(), egress_aes.borrow_mut());
 
     stream.write(&header).unwrap();
     stream.flush().unwrap();
 
-    let body = create_body(msg, egress_mac, egress_aes);
+    let body = create_body(msg, egress_mac.borrow_mut(), egress_aes.borrow_mut());
 
     stream.write(&body).unwrap();
     stream.flush().unwrap();

@@ -1,6 +1,8 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::prelude::*;
 use std::net::TcpStream;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use eth_prototype::protocols::eth;
@@ -118,6 +120,10 @@ fn main() {
         remote_data,
         init_msg,
     );
+
+    // Mutex is not used here but it use in the main program so we need it...
+    let mut egress_aes = Arc::new(Mutex::new(egress_aes));
+    let mut egress_mac = Arc::new(Mutex::new(egress_mac));
 
     println!("Frame setup done !");
 
