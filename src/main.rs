@@ -4,7 +4,9 @@ use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
-use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::{channel, sync_channel};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -162,6 +164,8 @@ fn main() {
         remote_data,
         init_msg,
     );
+    let mut egress_aes = Arc::new(Mutex::new(egress_aes));
+    let mut egress_mac = Arc::new(Mutex::new(egress_mac));
 
     info!("Frame setup done !");
 
@@ -265,6 +269,43 @@ fn main() {
      *
      ****************************/
 
+    let mut thread_stream = stream.try_clone().unwrap();
+    let thread_egress_mac = Arc::clone(&egress_mac);
+    let thread_egress_aes = Arc::clone(&egress_aes);
+
+    let (tx_tcp, rx_tcp) = channel();
+
+    let _tcp_handle = thread::spawn(move || {
+        let mut uncrypted_body: Vec<u8>;
+        let mut code;
+        loop {
+            uncrypted_body =
+                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes);
+
+            // handle RLPx message
+            if uncrypted_body[0] < 16 {
+                info!("Code {}", uncrypted_body[0]);
+                trace!("{}", hex::encode(&uncrypted_body));
+                code = uncrypted_body[0];
+
+                if code == 2 {
+                    // send pong
+                    let pong = message::create_pong_message();
+
+                    utils::send_message(
+                        pong,
+                        &mut thread_stream,
+                        &thread_egress_mac,
+                        &thread_egress_aes,
+                    );
+                }
+                continue;
+            }
+
+            tx_tcp.send(uncrypted_body).unwrap();
+        }
+    });
+
     loop {
         /******************
          *
@@ -292,20 +333,7 @@ fn main() {
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
-
-            if uncrypted_body[0] < 16 {
-                info!("Code {}", uncrypted_body[0]);
-                info!("{}", hex::encode(&uncrypted_body));
-                code = uncrypted_body[0];
-
-                if code == 2 {
-                    // send pong
-                    let pong = message::create_pong_message();
-                    utils::send_message(pong, &mut stream, &mut egress_mac, &mut egress_aes);
-                }
-                continue;
-            }
+            uncrypted_body = rx_tcp.recv().unwrap();
 
             code = uncrypted_body[0] - 16;
             if code == 4 {
@@ -356,21 +384,7 @@ fn main() {
             let mut uncrypted_body: Vec<u8>;
             let mut code;
             loop {
-                uncrypted_body =
-                    utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
-
-                if uncrypted_body[0] < 16 {
-                    info!("Code {}", uncrypted_body[0]);
-                    trace!("{}", hex::encode(&uncrypted_body));
-                    code = uncrypted_body[0];
-
-                    if code == 2 {
-                        // send pong
-                        let pong = message::create_pong_message();
-                        utils::send_message(pong, &mut stream, &mut egress_mac, &mut egress_aes);
-                    }
-                    continue;
-                }
+                uncrypted_body = rx_tcp.recv().unwrap();
 
                 code = uncrypted_body[0] - 16;
                 if code == 6 {
