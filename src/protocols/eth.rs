@@ -138,8 +138,8 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
             extradata: extradata.to_vec(),
         });
 
-        info!("Block hash : {}", hex::encode(&hash));
-        info!("Number : {}", number);
+        trace!("Block hash : {}", hex::encode(&hash));
+        trace!("Number : {}", number);
     }
 
     return hashes;

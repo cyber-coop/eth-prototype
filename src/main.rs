@@ -378,7 +378,7 @@ fn main() {
              ******************/
 
             info!(
-                "Handling BlockBodies message ({}/{BLOCK_NUM} txs received)",
+                "Handling BlockBodies message ({}/{BLOCK_NUM} block bodies received)",
                 transactions.len()
             );
             let mut uncrypted_body: Vec<u8>;
