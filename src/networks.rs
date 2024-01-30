@@ -9,7 +9,7 @@ pub struct Network {
 }
 
 impl Network {
-    // Geth/v1.11.5-stable/linux-amd64/go1.19.5
+    // Ethereum Rinkeby
     pub const ETHEREUM_RINKEBY: Network = Network {
         genesis_hash: [
             99, 65, 253, 61, 175, 148, 183, 72, 199, 44, 237, 90, 91, 38, 2, 143, 36, 116, 245,
