@@ -29,7 +29,7 @@ fn main() {
     // Read cli args for network value
     let network_arg: String = env::args()
         .nth(1)
-        .expect("expecting a network (ethereum_rinkeby, ethereum_goerli, ethereum_sepolia, ethereum_mainnet or binance_mainnet).");
+        .expect("expecting a network (ethereum_ropsten, ethereum_rinkeby, ethereum_goerli, ethereum_sepolia, ethereum_mainnet or binance_mainnet).");
     let network = networks::Network::find(network_arg.as_str()).unwrap();
 
     // Load config values from the config file
@@ -181,9 +181,17 @@ fn main() {
 
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
-    let payload = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
+    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
 
-    dbg!(&payload);
+    // We need to find the highest eth version it supports
+    let mut version = 0;
+    for capability in hello_message.capabilities {
+        if capability.name.0.to_string() == "eth" {
+            if capability.version > version {
+                version = capability.version;
+            }
+        }
+    }
 
     /******************
      *
@@ -209,6 +217,7 @@ fn main() {
     let network_id = network.network_id;
 
     let status = eth::create_status_message(
+        &version,
         &genesis_hash,
         &genesis_hash,
         &head_td,

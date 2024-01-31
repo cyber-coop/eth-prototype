@@ -166,6 +166,7 @@ fn main() {
 
     // let status = message::create_status_message(&genesis_hash, &genesis_hash, &head_td, &fork_id, &network_id);
     let status = eth::create_status_message(
+        &68,
         &genesis_hash,
         &genesis_hash,
         &head_td,
