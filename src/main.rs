@@ -191,7 +191,7 @@ fn main() {
                 version = capability.version;
             }
         }
-    }   
+    }
 
     /******************
      *
