@@ -6,6 +6,7 @@ use crate::types::{Block, Transaction};
 
 // Create status message following the ETH protocol
 pub fn create_status_message(
+    version: &usize,
     genesis_hash: &Vec<u8>,
     head_hash: &Vec<u8>,
     head_td: &u64,
@@ -15,8 +16,7 @@ pub fn create_status_message(
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // Protocol version
-    // TODO: find the highest matching protocol
-    s.append(&68_u8);
+    s.append(version);
     // network Id
     s.append(network_id);
     // head Td
