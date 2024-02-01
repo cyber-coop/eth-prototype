@@ -93,6 +93,38 @@ pub fn create_get_block_headers_message(
     return [code.to_vec(), payload_compressed].concat();
 }
 
+pub fn parse_get_block_bodies(payload: Vec<u8>) -> usize {
+    let mut dec = snap::raw::Decoder::new();
+    let message = dec.decompress_vec(&payload).unwrap();
+
+    let r = rlp::Rlp::new(&message);
+    assert!(r.is_list());
+
+    let req_id: usize = r.at(0).unwrap().as_val().unwrap();
+
+    return req_id;
+}
+
+
+pub fn create_empty_block_headers_message(req_id: &usize) -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
+
+    s.begin_unbounded_list();
+    s.append(req_id);
+
+    s.begin_list(0);
+    s.finalize_unbounded_list();
+
+    let payload = s.as_raw();
+    let code: Vec<u8> = vec![0x04 + BASE_PROTOCOL_OFFSET];
+
+    let mut enc = snap::raw::Encoder::new();
+    let payload_compressed = enc.compress_vec(&payload).unwrap();
+
+    return [code.to_vec(), payload_compressed].concat();
+}
+
+
 pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();

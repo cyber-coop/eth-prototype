@@ -295,7 +295,7 @@ fn main() {
             // handle RLPx message
             if uncrypted_body[0] < 16 {
                 info!("Code {}", uncrypted_body[0]);
-                trace!("{}", hex::encode(&uncrypted_body));
+                info!("{}", hex::encode(&uncrypted_body));
                 code = uncrypted_body[0];
 
                 if code == 2 {
@@ -310,6 +310,20 @@ fn main() {
                     );
                 }
                 continue;
+            }
+
+            if uncrypted_body[0] - 16 == 3 {
+                // Rospten node keep asking us for new block headers that we don't have
+                // Working with Geth/v1.10.23-stable-d901d853 but not v1.10.21
+                let req_id = eth::parse_get_block_bodies(uncrypted_body[1..].to_vec());
+                let empty_block_bodies_message = eth::create_empty_block_headers_message(&req_id);
+
+                utils::send_message(
+                    empty_block_bodies_message,
+                    &mut thread_stream,
+                    &thread_egress_mac,
+                    &thread_egress_aes,
+                );
             }
 
             tx_tcp.send(uncrypted_body).unwrap();
