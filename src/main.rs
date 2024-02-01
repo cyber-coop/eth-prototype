@@ -182,6 +182,7 @@ fn main() {
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
     let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
+    dbg!(&hello_message);
 
     // We need to find the highest eth version it supports
     let mut version = 0;
