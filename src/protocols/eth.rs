@@ -105,7 +105,6 @@ pub fn parse_get_block_bodies(payload: Vec<u8>) -> usize {
     return req_id;
 }
 
-
 pub fn create_empty_block_headers_message(req_id: &usize) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
 
@@ -123,7 +122,6 @@ pub fn create_empty_block_headers_message(req_id: &usize) -> Vec<u8> {
 
     return [code.to_vec(), payload_compressed].concat();
 }
-
 
 pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
     let mut dec = snap::raw::Decoder::new();
