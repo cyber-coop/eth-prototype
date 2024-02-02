@@ -9,6 +9,17 @@ pub struct Network {
 }
 
 impl Network {
+    // Ethereum Rospten
+    pub const ETHEREUM_ROPSTEN: Network = Network {
+        genesis_hash: [
+            65, 148, 16, 35, 104, 9, 35, 224, 254, 77, 116, 163, 75, 218, 200, 20, 31, 37, 64, 227,
+            174, 144, 98, 55, 24, 228, 125, 102, 209, 202, 74, 45,
+        ],
+        head_td: 50000820485795157,
+        fork_id: [0x7119b6b3, 0],
+        network_id: 0x03,
+    };
+
     // Ethereum Rinkeby
     pub const ETHEREUM_RINKEBY: Network = Network {
         genesis_hash: [
@@ -66,6 +77,7 @@ impl Network {
 
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
         match network {
+            "ethereum_ropsten" => Ok(Self::ETHEREUM_ROPSTEN),
             "ethereum_rinkeby" => Ok(Self::ETHEREUM_RINKEBY),
             "ethereum_goerli" => Ok(Self::ETHEREUM_GOERLI),
             "ethereum_sepolia" => Ok(Self::ETHEREUM_SEPOLIA),

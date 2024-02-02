@@ -95,7 +95,8 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
     }
 
     let nonce: u32 = transaction.at(0).unwrap().as_val().unwrap();
-    let gas_price: u64 = transaction.at(1).unwrap().as_val().unwrap();
+    // NOTE: there is a transaction in Ropsten where gas_price is bigger than u64
+    let mut gas_price: u64 = transaction.at(1).unwrap().as_val().unwrap_or_default();
     let gas_limit: u64 = transaction.at(2).unwrap().as_val().unwrap();
     let to: Vec<u8> = transaction.at(3).unwrap().as_val().unwrap();
     let value: Vec<u8> = transaction.at(4).unwrap().as_val().unwrap();
@@ -103,6 +104,11 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
     let v: u32 = transaction.at(6).unwrap().as_val().unwrap();
     let r: Vec<u8> = transaction.at(7).unwrap().as_val().unwrap();
     let s: Vec<u8> = transaction.at(8).unwrap().as_val().unwrap();
+
+    // TODO: we need a better fix (big values met in Rospten)
+    if (gas_price as i64).is_negative() {
+        gas_price = 0;
+    }
 
     let mut hasher = Keccak256::new();
     hasher.update(&transaction.as_raw());
