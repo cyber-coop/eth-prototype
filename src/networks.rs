@@ -49,7 +49,7 @@ impl Network {
             238, 12, 44, 85, 63, 205, 223, 81, 56, 153, 62, 109, 217,
         ],
         head_td: 0x3c656d23029ab0,
-        fork_id: [0xf7f9bc08, 0],
+        fork_id: [0x88cf81d9, 0],
         network_id: 0xaa36a7,
     };
 
