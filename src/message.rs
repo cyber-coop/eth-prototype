@@ -86,7 +86,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                     s,
                     raw: eip_tx,
                 };
-            },
+            }
             3 => {
                 let t = rlp::Rlp::new(&eip_tx[1..]);
                 assert!(t.is_list());
