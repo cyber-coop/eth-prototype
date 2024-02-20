@@ -32,7 +32,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 let to: Vec<u8> = t.at(4).unwrap().as_val().unwrap();
                 let value: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
                 let data: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
-                let v: u32 = t.at(8).unwrap().as_val().unwrap();
+                let v: u64 = t.at(8).unwrap().as_val().unwrap();
                 let r: Vec<u8> = t.at(9).unwrap().as_val().unwrap();
                 let s: Vec<u8> = t.at(10).unwrap().as_val().unwrap();
 
@@ -65,7 +65,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 let to: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
                 let value: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
                 let data: Vec<u8> = t.at(7).unwrap().as_val().unwrap();
-                let v: u32 = t.at(9).unwrap().as_val().unwrap();
+                let v: u64 = t.at(9).unwrap().as_val().unwrap();
                 let r: Vec<u8> = t.at(10).unwrap().as_val().unwrap();
                 let s: Vec<u8> = t.at(11).unwrap().as_val().unwrap();
 
@@ -102,7 +102,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 // let access_list: Vec<u8> = t.at(8).unwrap().as_val().unwrap();
                 // let max_fee_per_blob_gas: Vec<u8> = t.at(9).unwrap().as_val().unwrap();
                 // let blob_versioned_hashes: Vec<u8> = t.at(10).unwrap().as_val().unwrap();
-                let v: u32 = t.at(11).unwrap().as_val().unwrap();
+                let v: u64 = t.at(11).unwrap().as_val().unwrap();
                 let r: Vec<u8> = t.at(12).unwrap().as_val().unwrap();
                 let s: Vec<u8> = t.at(13).unwrap().as_val().unwrap();
 
@@ -138,7 +138,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
     let to: Vec<u8> = transaction.at(3).unwrap().as_val().unwrap();
     let value: Vec<u8> = transaction.at(4).unwrap().as_val().unwrap();
     let data: Vec<u8> = transaction.at(5).unwrap().as_val().unwrap();
-    let v: u32 = transaction.at(6).unwrap().as_val().unwrap();
+    let v: u64 = transaction.at(6).unwrap().as_val().unwrap();
     let r: Vec<u8> = transaction.at(7).unwrap().as_val().unwrap();
     let s: Vec<u8> = transaction.at(8).unwrap().as_val().unwrap();
 

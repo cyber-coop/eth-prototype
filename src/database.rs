@@ -22,7 +22,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         toaddress BYTEA NOT NULL,
         value BYTEA NOT NULL,
         data BYTEA NOT NULL,
-        v BYTEA NOT NULL,
+        v BIGINT NOT NULL,
         r BYTEA NOT NULL,
         s BYTEA NOT NULL,
         raw BYTEA

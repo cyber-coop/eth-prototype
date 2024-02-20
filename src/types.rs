@@ -88,7 +88,7 @@ pub struct Transaction {
     // lets save it as raw bytes
     pub value: Vec<u8>,
     pub data: Vec<u8>,
-    pub v: u32,
+    pub v: u64,
     pub r: Vec<u8>,
     pub s: Vec<u8>,
     pub raw: Vec<u8>,
