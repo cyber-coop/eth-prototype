@@ -72,7 +72,7 @@ pub fn save_blocks(
         blocks_string.push_str(&tmp);
         txs.iter().for_each(|t| {
             let tmp = format!(
-                "\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};\\\\x{};\\\\x{}\n",
+                "\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};\\\\x{};\\\\x{}\n",
                 hex::encode(&t.txid),
                 t.tx_type,
                 hex::encode(&b.hash),
