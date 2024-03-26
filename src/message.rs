@@ -1,13 +1,12 @@
+use crate::types::{AccessList, Hash};
 use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
 use crate::utils;
 use arrayvec::ArrayString;
 use num::BigUint;
 use rlp::{Rlp, RlpStream};
-use sha3::{Digest, Keccak256};
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
-use crate::types::{Hash, AccessList};
+use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
-
 
 const BASE_PROTOCOL_VERSION: usize = 5;
 
@@ -70,16 +69,16 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             27 => RecoveryId::from_i32(0).unwrap(),
             28 => RecoveryId::from_i32(1).unwrap(),
             _ => {
-                let v = (v-35) % 2;
+                let v = (v - 35) % 2;
                 RecoveryId::from_i32(v as i32).unwrap()
-            },
+            }
         };
-        let sig = RecoverableSignature::from_compact(&utils::get_sig(&r,&s), recid).unwrap();         
+        let sig = RecoverableSignature::from_compact(&utils::get_sig(&r, &s), recid).unwrap();
         let pubkey = sig.recover(&msg).unwrap();
         let mut hasher = Keccak256::new();
         hasher.update(&pubkey.serialize_uncompressed()[1..]);
-        let from : Vec<u8> = hasher.finalize()[12..].to_vec();
-    
+        let from: Vec<u8> = hasher.finalize()[12..].to_vec();
+
         return Transaction {
             chain_id: None,
             nonce,
@@ -119,13 +118,20 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             let value: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
             let data: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
             let mut access_list: AccessList = AccessList(vec![]);
-            let tmp  = t.at(7).unwrap();
+            let tmp = t.at(7).unwrap();
             for n in 0..tmp.item_count().unwrap() {
                 let access = tmp.at(n).unwrap();
                 assert!(access.is_list());
 
                 let key: Vec<u8> = access.at(0).unwrap().as_val().unwrap();
-                let list: Vec<Hash> = access.at(1).unwrap().as_list::<Vec<u8>>().unwrap().iter().map(|list| { Hash(list.to_vec()) }).collect();
+                let list: Vec<Hash> = access
+                    .at(1)
+                    .unwrap()
+                    .as_list::<Vec<u8>>()
+                    .unwrap()
+                    .iter()
+                    .map(|list| Hash(list.to_vec()))
+                    .collect();
 
                 access_list.0.push((Hash(key), list));
             }
@@ -161,16 +167,16 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 27 => RecoveryId::from_i32(0).unwrap(),
                 28 => RecoveryId::from_i32(1).unwrap(),
                 _ => {
-                    let v = (v-35) % 2;
+                    let v = (v - 35) % 2;
                     RecoveryId::from_i32(v as i32).unwrap()
-                },
+                }
             };
-            let sig = RecoverableSignature::from_compact(&utils::get_sig(&r,&s), recid).unwrap();         
+            let sig = RecoverableSignature::from_compact(&utils::get_sig(&r, &s), recid).unwrap();
             let pubkey = sig.recover(&msg).unwrap();
             let mut hasher = Keccak256::new();
             hasher.update(&pubkey.serialize_uncompressed()[1..]);
-            let from : Vec<u8> = hasher.finalize()[12..].to_vec();
-        
+            let from: Vec<u8> = hasher.finalize()[12..].to_vec();
+
             Transaction {
                 chain_id: Some(chain_id),
                 nonce,
@@ -191,7 +197,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 from,
                 tx_type: 1,
             }
-        },
+        }
         2 => {
             let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
             let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
@@ -203,13 +209,20 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             let data: Vec<u8> = t.at(7).unwrap().as_val().unwrap();
 
             let mut access_list: AccessList = AccessList(vec![]);
-            let tmp  = t.at(8).unwrap();
+            let tmp = t.at(8).unwrap();
             for n in 0..tmp.item_count().unwrap() {
                 let access = tmp.at(n).unwrap();
                 assert!(access.is_list());
 
                 let key: Vec<u8> = access.at(0).unwrap().as_val().unwrap();
-                let list: Vec<Hash> = access.at(1).unwrap().as_list::<Vec<u8>>().unwrap().iter().map(|list| { Hash(list.to_vec()) }).collect();
+                let list: Vec<Hash> = access
+                    .at(1)
+                    .unwrap()
+                    .as_list::<Vec<u8>>()
+                    .unwrap()
+                    .iter()
+                    .map(|list| Hash(list.to_vec()))
+                    .collect();
 
                 access_list.0.push((Hash(key), list));
             }
@@ -245,15 +258,15 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 27 => RecoveryId::from_i32(0).unwrap(),
                 28 => RecoveryId::from_i32(1).unwrap(),
                 _ => {
-                    let v = (v-35) % 2;
+                    let v = (v - 35) % 2;
                     RecoveryId::from_i32(v as i32).unwrap()
-                },
+                }
             };
-            let sig = RecoverableSignature::from_compact(&utils::get_sig(&r,&s), recid).unwrap();         
+            let sig = RecoverableSignature::from_compact(&utils::get_sig(&r, &s), recid).unwrap();
             let pubkey = sig.recover(&msg).unwrap();
             let mut hasher = Keccak256::new();
             hasher.update(&pubkey.serialize_uncompressed()[1..]);
-            let from : Vec<u8> = hasher.finalize()[12..].to_vec();
+            let from: Vec<u8> = hasher.finalize()[12..].to_vec();
 
             Transaction {
                 chain_id: Some(chain_id),
@@ -275,14 +288,15 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 from,
                 tx_type: 2,
             }
-        },
-        3 => { todo!("Handle transaction of type 3"); },
-        _ => { 
+        }
+        3 => {
+            todo!("Handle transaction of type 3");
+        }
+        _ => {
             dbg!(hex::encode(&payload));
             todo!("others type not supported yet");
         }
     }
-
 
     // if !transaction.is_list() {
     //     let eip_tx: Vec<u8> = transaction.as_val().unwrap();
@@ -399,7 +413,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
     //                 access_list.push((key, list));
     //             }
     //             let max_fee_per_blob_gas: u32 = t.at(9).unwrap().as_val().unwrap();
-    //             let blob_versioned_hashes: Vec<Vec<u8>> = t.at(10).unwrap().as_list::<Vec<u8>>().unwrap().iter().map(|h| { 
+    //             let blob_versioned_hashes: Vec<Vec<u8>> = t.at(10).unwrap().as_list::<Vec<u8>>().unwrap().iter().map(|h| {
     //                 let h = rlp::Rlp::new(&h);
     //                 assert!(h.is_list());
 
@@ -433,8 +447,6 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
     //         }
     //     };
     // }
-
-
 }
 
 pub fn create_hello_message(private_key: &Vec<u8>) -> Vec<u8> {

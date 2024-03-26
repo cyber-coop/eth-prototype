@@ -1,9 +1,9 @@
 use postgres::Client;
-use std::{io::prelude::*, path::Display};
-use std::time::Instant;
-use sha3::{Keccak256, Digest};
+use sha3::{Digest, Keccak256};
 use std::fmt;
 use std::option::Option;
+use std::time::Instant;
+use std::{io::prelude::*, path::Display};
 
 use crate::types::{Block, Transaction};
 
@@ -41,7 +41,8 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         txid BYTEA NOT NULL,
         address BYTEA NOT NULL
     );
-    ");
+    "
+    );
 
     postgres_client.batch_execute(&query).unwrap();
 }
@@ -139,22 +140,23 @@ pub fn save_blocks(
     );
 }
 
-
 #[cfg(test)]
 mod tests {
-    use secp256k1::ecdsa::{RecoveryId, RecoverableSignature};
-    use sha3::{Keccak256, Digest};
+    use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
+    use sha3::{Digest, Keccak256};
 
     use crate::message::parse_transaction;
     use crate::types::Transaction;
 
     #[test]
     fn test_recover() {
-        let digest = hex::decode("9c4a3989dac0ab4808f53a83482a99506a3893fedef826b97764f6ca4bb4a864").unwrap();
+        let digest =
+            hex::decode("9c4a3989dac0ab4808f53a83482a99506a3893fedef826b97764f6ca4bb4a864")
+                .unwrap();
         let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
         dbg!(&msg);
         let recid = RecoveryId::from_i32(0).unwrap();
-        let sig = RecoverableSignature::from_compact(&hex::decode("98c9df5efd59382699e7444e24bf4985a99a196f0b66626e70cfa5678dd221117e69d64e84fb0bd38a66e4557b645178853aadeb62d212361084bb88e529d708").unwrap(), recid).unwrap();         
+        let sig = RecoverableSignature::from_compact(&hex::decode("98c9df5efd59382699e7444e24bf4985a99a196f0b66626e70cfa5678dd221117e69d64e84fb0bd38a66e4557b645178853aadeb62d212361084bb88e529d708").unwrap(), recid).unwrap();
         dbg!(&sig);
         let pubkey = sig.recover(&msg).unwrap();
         dbg!(hex::encode(&pubkey.serialize_uncompressed()));
@@ -162,17 +164,22 @@ mod tests {
         // Calculate address!
         let mut hasher = Keccak256::new();
         hasher.update(&pubkey.serialize_uncompressed()[1..]);
-        let address : Vec<u8> = hasher.finalize()[12..].to_vec();
-        
-        assert_eq!(hex::encode(&address), "b18ccf69940177f3ec62920ddb2a08ef7cb16e8f");
+        let address: Vec<u8> = hasher.finalize()[12..].to_vec();
+
+        assert_eq!(
+            hex::encode(&address),
+            "b18ccf69940177f3ec62920ddb2a08ef7cb16e8f"
+        );
     }
 
     #[test]
     fn test_recover_2() {
-        let digest = hex::decode("183d0572f8bdfb8c12c3438485642ef55e812813cdee1bc9a8092643b48481b2").unwrap();
+        let digest =
+            hex::decode("183d0572f8bdfb8c12c3438485642ef55e812813cdee1bc9a8092643b48481b2")
+                .unwrap();
         let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
         let recid = RecoveryId::from_i32(0).unwrap();
-        let sig = RecoverableSignature::from_compact(&hex::decode("b7ff1b1f51475d9d2e6f6e12b2ae9d57951846648793a854e25daa9ef2becd9876278a0a880ba2260b4b7413f08a86ece9280c43e5643578c8eddfdaca2b2bc4").unwrap(), recid).unwrap();         
+        let sig = RecoverableSignature::from_compact(&hex::decode("b7ff1b1f51475d9d2e6f6e12b2ae9d57951846648793a854e25daa9ef2becd9876278a0a880ba2260b4b7413f08a86ece9280c43e5643578c8eddfdaca2b2bc4").unwrap(), recid).unwrap();
         dbg!(&sig);
         let pubkey = sig.recover(&msg).unwrap();
         // let pubkey = VerifyingKey::recover_from_prehash(&digest, &sig, recid).unwrap();
@@ -181,23 +188,33 @@ mod tests {
         // Calculate address!
         let mut hasher = Keccak256::new();
         hasher.update(&pubkey.serialize_uncompressed()[1..]);
-        let address : Vec<u8> = hasher.finalize()[12..].to_vec();
-        
-        assert_eq!(hex::encode(&address), "9a26f4d07d4d86fd9f6a86255ce5f0941d87767e");
+        let address: Vec<u8> = hasher.finalize()[12..].to_vec();
+
+        assert_eq!(
+            hex::encode(&address),
+            "9a26f4d07d4d86fd9f6a86255ce5f0941d87767e"
+        );
     }
 
     #[test]
     fn test_recover_3() {
-        let digest = hex::decode("30cdea07ca81fdcfd42f3190c2684147f0cef708912fd64e745da8ba3045c223").unwrap();
+        let digest =
+            hex::decode("30cdea07ca81fdcfd42f3190c2684147f0cef708912fd64e745da8ba3045c223")
+                .unwrap();
         let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
 
         let mut r: Vec<u8> = vec![0; 32];
         let mut s: Vec<u8> = vec![0; 32];
-        r.copy_from_slice(&hex::decode("cfd6450ec934e24a7c4e9ba512de17daf16813f24feecb3a9e06c5fbe7525bb4").unwrap());
-        s[1..].copy_from_slice(&hex::decode("9b474ec4d2b1a8b5944848c19cf69a50f0e53404f4893474803062aa467065").unwrap());
+        r.copy_from_slice(
+            &hex::decode("cfd6450ec934e24a7c4e9ba512de17daf16813f24feecb3a9e06c5fbe7525bb4")
+                .unwrap(),
+        );
+        s[1..].copy_from_slice(
+            &hex::decode("9b474ec4d2b1a8b5944848c19cf69a50f0e53404f4893474803062aa467065").unwrap(),
+        );
 
         let recid = RecoveryId::from_i32(1).unwrap();
-        let sig = RecoverableSignature::from_compact(&[r, s].concat().to_vec(), recid).unwrap();         
+        let sig = RecoverableSignature::from_compact(&[r, s].concat().to_vec(), recid).unwrap();
         dbg!(&sig);
         let pubkey = sig.recover(&msg).unwrap();
         // let pubkey = VerifyingKey::recover_from_prehash(&digest, &sig, recid).unwrap();
@@ -206,9 +223,12 @@ mod tests {
         // Calculate address!
         let mut hasher = Keccak256::new();
         hasher.update(&pubkey.serialize_uncompressed()[1..]);
-        let address : Vec<u8> = hasher.finalize()[12..].to_vec();
+        let address: Vec<u8> = hasher.finalize()[12..].to_vec();
 
-        assert_eq!(hex::encode(&address), "110602942a25d4c7138d9063d738f4934da18de6");
+        assert_eq!(
+            hex::encode(&address),
+            "110602942a25d4c7138d9063d738f4934da18de6"
+        );
     }
 
     #[test]
@@ -216,9 +236,9 @@ mod tests {
         use serde::Serialize;
 
         #[derive(Serialize)]
-        struct Hash(#[serde(with = "hex::serde")]Vec<u8>);
+        struct Hash(#[serde(with = "hex::serde")] Vec<u8>);
 
-        #[derive(Serialize)]       
+        #[derive(Serialize)]
         struct AccessList(Vec<(Hash, Vec<Hash>)>);
 
         let access_list: Option<AccessList> = Some(AccessList(vec![]));
@@ -227,7 +247,10 @@ mod tests {
         let access_list: Option<AccessList> = None;
         dbg!(serde_json::to_string(&access_list).unwrap());
 
-        let access_list: Option<AccessList> = Some(AccessList(vec![(Hash(0xdead_i32.to_be_bytes().to_vec()), vec![Hash(0xbeef_i32.to_be_bytes().to_vec())])]));
+        let access_list: Option<AccessList> = Some(AccessList(vec![(
+            Hash(0xdead_i32.to_be_bytes().to_vec()),
+            vec![Hash(0xbeef_i32.to_be_bytes().to_vec())],
+        )]));
         dbg!(serde_json::to_string(&access_list).unwrap());
     }
 }

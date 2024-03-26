@@ -1,7 +1,7 @@
 use arrayvec::ArrayString;
+use num::BigUint;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use serde::Serialize;
-use num::BigUint;
 
 #[derive(Clone, Debug)]
 pub struct HelloMessage {
@@ -79,11 +79,10 @@ impl rlp::Encodable for CapabilityName {
     }
 }
 
-
 #[derive(Serialize, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Hash(#[serde(with = "hex::serde")] pub Vec<u8>);
 
-#[derive(Serialize, Clone, Debug)]       
+#[derive(Serialize, Clone, Debug)]
 pub struct AccessList(pub Vec<(Hash, Vec<Hash>)>);
 
 #[derive(Clone, Debug)]
@@ -112,7 +111,7 @@ pub struct Transaction {
 // impl Transaction {
 //     pub fn digest(&self) -> Vec<u8> {
 //         let msg: Vec<u8> = match &self.tx {
-//             Tx::TransactionLegacy(t) => { 
+//             Tx::TransactionLegacy(t) => {
 //                 let d = rlp::Rlp::new(&self.raw);
 //                 assert!(d.is_list());
 
@@ -175,7 +174,7 @@ pub struct Transaction {
 
 //         let mut hasher = Keccak256::new();
 //         hasher.update(&msg);
-        
+
 //         hasher.finalize().to_vec()
 //     }
 
