@@ -17,6 +17,15 @@ pub type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
 pub type Aes256Ctr64BE = ctr::Ctr64BE<aes::Aes256>;
 const READ_MESSAGE_TIME_MS: u64 = 1;
 
+pub fn get_sig(r: &[u8], s: &[u8]) -> Vec<u8> {
+    let mut sig: Vec<u8> = vec![0;64];
+    // We need to pas with 00
+    sig[(32 - r.len())..32].copy_from_slice(&r);
+    sig[(64 - s.len())..].copy_from_slice(&s);
+    
+    sig
+}
+
 pub fn ecdh_x(pubkey: &Vec<u8>, privkey: &Vec<u8>) -> Vec<u8> {
     let sk = k256::ecdsa::SigningKey::from_slice(privkey).unwrap();
     let pk = k256::PublicKey::from_sec1_bytes(pubkey).unwrap();
