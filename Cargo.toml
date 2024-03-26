@@ -28,7 +28,7 @@ ctr = "0.9.2"
 ecb = "0.1.1"
 aes = "0.8.2"
 sha3 = "0.10.8"
-secp256k1 = { version = "0.28.1", features = ["recovery", "global-context", "rand-std"] }
+secp256k1 = { version = "0.28.1", features = ["recovery", "global-context", "rand-std", "hashes"] }
 snap = "1.1.0"
 postgres = { version = "0.19.4" }
 arrayvec = "0.5"
@@ -37,6 +37,8 @@ log = "0.4.17"
 env_logger = "0.11"
 toml = "0.8.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+num = "0.4"
 
 [dev-dependencies]
 devp2p = { git = "https://github.com/rllola/devp2p" }
@@ -48,4 +50,3 @@ web3 = "0.19.0"
 
 # benchmark
 reqwest = {version = "0.11.23", features = ["blocking", "json"]}
-serde_json = { version = "1.0" }
