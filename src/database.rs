@@ -1,9 +1,6 @@
 use postgres::Client;
-use sha3::{Digest, Keccak256};
-use std::fmt;
-use std::option::Option;
 use std::time::Instant;
-use std::{io::prelude::*, path::Display};
+use std::io::prelude::*;
 
 use crate::types::{Block, Transaction};
 
@@ -144,9 +141,6 @@ pub fn save_blocks(
 mod tests {
     use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
     use sha3::{Digest, Keccak256};
-
-    use crate::message::parse_transaction;
-    use crate::types::Transaction;
 
     #[test]
     fn test_recover() {

@@ -92,6 +92,7 @@ fn main() {
      ******************/
     let mut stream =
         TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
+    stream.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
     let remote_id = config.peer.remote_id;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
