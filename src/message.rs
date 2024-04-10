@@ -317,13 +317,20 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             }
             assert_eq!(access_list.0.len(), tmp.item_count().unwrap());
             let max_fee_per_blob_gas: u32 = t.at(9).unwrap().as_val().unwrap();
-            let blob_versioned_hashes: Vec<Hash> = t.at(10).unwrap().as_list::<Vec<u8>>().unwrap().iter().map(|h| {
-                let h = rlp::Rlp::new(&h);
-                assert!(h.is_list());
+            let blob_versioned_hashes: Vec<Hash> = t
+                .at(10)
+                .unwrap()
+                .as_list::<Vec<u8>>()
+                .unwrap()
+                .iter()
+                .map(|h| {
+                    let h = rlp::Rlp::new(&h);
+                    assert!(h.is_list());
 
-                let hash: Vec<u8> = h.as_val().unwrap();
-                Hash(hash)
-            }).collect();
+                    let hash: Vec<u8> = h.as_val().unwrap();
+                    Hash(hash)
+                })
+                .collect();
             let v: u64 = t.at(11).unwrap().as_val().unwrap();
             let r: Vec<u8> = t.at(12).unwrap().as_val().unwrap();
             let s: Vec<u8> = t.at(13).unwrap().as_val().unwrap();

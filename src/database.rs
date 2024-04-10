@@ -1,6 +1,6 @@
 use postgres::Client;
-use std::time::Instant;
 use std::io::prelude::*;
+use std::time::Instant;
 
 use crate::types::{Block, Transaction};
 
