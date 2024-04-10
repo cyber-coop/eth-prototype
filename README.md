@@ -8,7 +8,7 @@ In its current state, the indexer takes 48h to index mainnet from scratch.
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Docker](https://docs.docker.com/engine/install/)
 
-## Run
+## Configuration
 
 ### Configuration file
 
@@ -34,12 +34,35 @@ If you don't have any peer to connect with, you can grab one in this [database](
 
 **NOTE**: Not all peers are working, a node-finder/tester is currently being developed.
 
+### Configuration on local/Docker
+
+If you want to run the indexer locally, then leave the localhost as **localhost**.
+
+If you want to run it on Docker, please set the localhost to **postgres** in the `config.toml` file.
+
 
 ### Docker compose
 
-To facilitate things, we have provided a `docker-compose.yml` file under the `contrib` folder that the start the indexer and the postgres database.
+To facilitate things, we have provided a `docker-compose.yml` file under the `contrib` folder that starts the indexer and the postgres database.
 
 **NOTE**: There is some modification to do in the docker compose file to make the database persistent.
+
+### Choosing the network
+
+This Ethereum P2P indexer can run on the following networks **(only on eth/67 and eth/68)**.
+
+```
+ethereum_ropsten
+ethereum_rinkeby
+ethereum_goerli
+ethereum_sepolia
+ethereum_mainnet
+binance_mainnet
+```
+
+Make sure you set the desired network in the `docker-compose.yml` file.
+
+## Run locally
 
 ### Creating the database
 
@@ -57,11 +80,26 @@ docker ps
 
 ### Run the indexer
 
-Now you can run the indexer:
+Now you can run the indexer (replace the network by the desired one)
 
 ```shell
 make run network=ethereum_mainnet
 ```
+
+## Run on Docker
+
+Make sure you've set the localhost to **postgres** in the `config.toml` file, then run the following command:
+
+```shell
+docker compose -f contrib/docker-compose.yml up
+```
+
+If you've made any edits in the `docker-compose.yml` file, make sure to add **--build**.
+
+```shell
+docker compose -f contrib/docker-compose.yml up --build
+```
+
 
 ## License
 
