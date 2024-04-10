@@ -3,10 +3,8 @@ use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction}
 use crate::utils;
 use arrayvec::ArrayString;
 use num::BigUint;
-use rlp::{Rlp, RlpStream};
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 use sha3::{Digest, Keccak256};
-use std::collections::HashMap;
 
 const BASE_PROTOCOL_VERSION: usize = 5;
 
