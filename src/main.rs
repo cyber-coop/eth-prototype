@@ -4,12 +4,12 @@ use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
+use std::process;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use std::process;
 
 use eth_prototype::protocols::eth;
 use eth_prototype::types::{Block, Transaction};
