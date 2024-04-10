@@ -7,3 +7,4 @@ config.*.toml
 docker-compose.*.yml
 Makefile.*
 azimutt.env
+.DS_Store
