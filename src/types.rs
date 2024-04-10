@@ -1,5 +1,7 @@
 use arrayvec::ArrayString;
+use num::BigUint;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
+use serde::Serialize;
 
 #[derive(Clone, Debug)]
 pub struct HelloMessage {
@@ -77,21 +79,33 @@ impl rlp::Encodable for CapabilityName {
     }
 }
 
+#[derive(Serialize, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Hash(#[serde(with = "hex::serde")] pub Vec<u8>);
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AccessList(pub Vec<(Hash, Vec<Hash>)>);
+
 #[derive(Clone, Debug)]
 pub struct Transaction {
-    pub txid: Vec<u8>,
+    pub chain_id: Option<u64>,
     pub nonce: u32,
-    pub gas_price: u64,
+    pub gas_price: Option<BigUint>, // Only present in legacy and type1 transactions
+    pub max_priority_fee_per_gas: Option<u64>, // Introduce in type 2 transactions
+    pub max_fee_per_gas: Option<u64>, // Introduce in type 2 transactions
     pub gas_limit: u64,
     pub to: Vec<u8>,
-    // value is Bigint not u64 (https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_legacy.go#L31)
-    // lets save it as raw bytes
-    pub value: Vec<u8>,
+    pub value: BigUint,
     pub data: Vec<u8>,
+    pub access_list: Option<AccessList>, // Introduce in type 2 transactions
+    pub max_fee_per_blob_gas: Option<u32>, // Introduce in type 3 transactions
+    pub blob_versioned_hashes: Option<Vec<Hash>>, // Introduce in type 3 transactions
     pub v: u64,
     pub r: Vec<u8>,
     pub s: Vec<u8>,
-    pub raw: Vec<u8>,
+    // extra info deducted from transaction
+    pub txid: Vec<u8>,
+    pub from: Vec<u8>,
+    pub tx_type: u8,
 }
 
 // We might want more data later

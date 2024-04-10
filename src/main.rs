@@ -4,6 +4,7 @@ use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
+use std::process;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -92,6 +93,9 @@ fn main() {
      ******************/
     let mut stream =
         TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .unwrap();
     let remote_id = config.peer.remote_id;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
@@ -120,7 +124,10 @@ fn main() {
 
     info!("waiting for answer...");
     let mut buf = [0u8; 2];
-    let _size = stream.read(&mut buf);
+    let size = stream.read(&mut buf).unwrap();
+
+    // We should have read some bytes
+    assert_ne!(size, 0);
 
     let size_expected = buf.as_slice().read_u16::<BigEndian>().unwrap() as usize;
     let shared_mac_data = &buf[0..2];
@@ -179,6 +186,12 @@ fn main() {
 
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
 
+    if uncrypted_body[0] == 0x01 {
+        info!("Disconnect message");
+        trace!("Disconnect message : {}", hex::encode(&uncrypted_body));
+        process::exit(1);
+    }
+
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
     let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
@@ -235,6 +248,11 @@ fn main() {
 
     info!("Handling STATUS message");
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    if uncrypted_body[0] == 0x01 {
+        info!("Disconnect message");
+        trace!("Disconnect message : {}", hex::encode(&uncrypted_body));
+        process::exit(1);
+    }
     let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
     // If we do't have blocks in the database we use the best one

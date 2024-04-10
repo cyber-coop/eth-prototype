@@ -4,6 +4,7 @@ This project is an indexer for Ethereum and Ethereum forks. It takes advantage o
 
 In its current state, the indexer takes 48h to index mainnet from scratch.
 
+
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Docker](https://docs.docker.com/engine/install/)
@@ -100,6 +101,29 @@ If you've made any edits in the `docker-compose.yml` file, make sure to add **--
 docker compose -f contrib/docker-compose.yml up --build
 ```
 
+**NOTE**: There is some modification to do in the docker compose file to make the database persistent.
+
+### Creating the database
+
+First, you need to create the postgres database:
+
+```shell
+make postgres
+```
+
+Then you can check the database is properly created: 
+
+```shell
+docker ps
+```
+
+### Run the indexer
+
+Now you can run the indexer:
+
+```shell
+make run network=ethereum_mainnet
+```
 
 ## License
 
