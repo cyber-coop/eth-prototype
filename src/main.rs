@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use std::process;
 
 use eth_prototype::protocols::eth;
 use eth_prototype::types::{Block, Transaction};
