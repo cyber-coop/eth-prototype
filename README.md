@@ -125,6 +125,32 @@ Now you can run the indexer:
 make run network=ethereum_mainnet
 ```
 
+## A little benchmark
+
+Depending on your hardware configuration, the indexer can run faster or slower.
+
+Here is a test of the indexer running on two different machines (with their configurations) and their rates of total processed blocks per second to have a general idea.
+
+### First machine
+
+**Machine:** OVH Server
+**OS:** Ubuntu 22.04 Jammy Jellyfish
+**CPU:** Intel Atom N2800 - 2 cores / 4 threads - 1,86 GHz
+**RAM:** 4 GB 1066 MHz
+**Hard drive:** 1 TB HDD Sata
+
+Blocks per second: 13 (average)
+
+### Second machine
+
+**Machine:** Macbook Pro 2020
+**OS:** macOS Sonoma 14.0
+**CPU:** Intel Core i5 - 4 cores / 8 threads - 1,4 GHz
+**RAM:** 8 GB 2133 MHz LPDDR3
+**Hard drive:** 256 GB SSD
+
+Blocks per second: 128 (average)
+
 ## License
 
 Do What The Fuck You Want To Public License
