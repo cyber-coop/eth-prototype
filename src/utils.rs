@@ -3,6 +3,7 @@ use byteorder::ByteOrder;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use hmac_sha256::{Hash, HMAC};
 use rand_core::{OsRng, RngCore};
+use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
 use std::io::prelude::*;
@@ -10,7 +11,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use rlp::RlpStream;
 
 use super::mac;
 
@@ -399,34 +399,31 @@ pub fn read_message(
     return uncrypted_body;
 }
 
-pub fn calculate_tx_addr (sender: Vec<u8>, nonce: u32) -> Vec<u8> {
-
+pub fn calculate_tx_addr(sender: Vec<u8>, nonce: u32) -> Vec<u8> {
     let mut rlp_encoded = RlpStream::new();
     rlp_encoded.begin_unbounded_list();
     rlp_encoded.append(&sender);
     rlp_encoded.append(&nonce);
     rlp_encoded.finalize_unbounded_list();
-    println!("Print rlp_encoded {}", hex::encode(rlp_encoded.as_raw()));
-    assert_eq!("d694bcb8da04c3a6a6e92da829c305ba523e0ba3e80480", hex::encode(rlp_encoded.as_raw()));
 
     let mut hasher = Keccak256::new();
     hasher.update(&rlp_encoded.as_raw());
     let contract_address_long = hasher.finalize();
-    
+
     /* Truncates the first 12 bytes of the hash */
     let contract_address = &contract_address_long[12..];
-    
+
     return contract_address.to_vec();
 }
 
 #[cfg(test)]
 mod tests {
+    use super::calculate_tx_addr;
     use super::{ecdh_x, Aes256Ctr64BE};
     use crate::mac::MAC;
     use aes::cipher::KeyIvInit;
     use sha3::Digest;
     use sha3::Keccak256;
-    use super::calculate_tx_addr;
 
     #[test]
     fn test_parse_header() {
@@ -554,6 +551,9 @@ mod tests {
         let sender: Vec<u8> = hex::decode("bcB8DA04C3A6A6E92da829C305ba523e0ba3e804").unwrap();
         let nonce: u32 = 0;
         let contract_address = calculate_tx_addr(sender, nonce);
-        assert_eq!(hex::encode(contract_address), "7c4ed2ec55cfc474fa0249db61c0145d3280b914");
+        assert_eq!(
+            hex::encode(contract_address),
+            "7c4ed2ec55cfc474fa0249db61c0145d3280b914"
+        );
     }
 }
