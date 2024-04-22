@@ -98,7 +98,7 @@ pub fn save_blocks(
                 info!("Transaction address calculated");
                 let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
                 let tmp = format!(
-                    "\\\\{}x;\\\\x{}\n",
+                    "\\\\x{};\\\\x{}\n",
                 hex::encode(&t.txid),
                 hex::encode(&tx_address));
                 contracts_string.push_str(&tmp);
