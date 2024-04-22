@@ -3,6 +3,7 @@ use std::io::prelude::*;
 use std::time::Instant;
 
 use crate::types::{Block, Transaction};
+use crate::utils;
 
 pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     let query = format!(
@@ -55,6 +56,7 @@ pub fn save_blocks(
     let mut transactions_string: String = String::new();
     // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
     let mut transactions_strings: Vec<String> = vec![];
+    let mut contracts_string: String = String::new();
 
     info!("starting to format blocks and transactions");
     blocks.iter().for_each(|(b, txs)| {
@@ -90,6 +92,17 @@ pub fn save_blocks(
                 hex::encode(&t.r),
                 hex::encode(&t.s),
             );
+            
+            // if "to" adddress is empty, calculates the transaction address
+            if t.to.is_empty() {
+                info!("Transaction address calculated");
+                let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
+                let tmp = format!(
+                    "\\\\{}x;\\\\x{}\n",
+                hex::encode(&t.txid),
+                hex::encode(&tx_address));
+                contracts_string.push_str(&tmp);
+            }
 
             // verifying if we are not going over the 1Gigabyte limit if yes we start a new copy in query
             if transactions_string.as_bytes().len() + tmp.as_bytes().len() > 1000000000 {
@@ -110,6 +123,12 @@ pub fn save_blocks(
         .unwrap();
     block_writer.write_all(blocks_string.as_bytes()).unwrap();
     block_writer.finish().unwrap();
+
+    let mut contract_writer = transaction
+        .copy_in(format!("COPY {}.contracts FROM stdin (DELIMITER ';')", schema_name).as_str())
+        .unwrap();
+    contract_writer.write_all(contracts_string.as_bytes()).unwrap();
+    contract_writer.finish().unwrap();
 
     for txs in transactions_strings {
         let mut transaction_writer = transaction
