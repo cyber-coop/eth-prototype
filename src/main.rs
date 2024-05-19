@@ -462,7 +462,7 @@ fn main() {
 
             // need to wait for database thread to finish
             database_handle.join().unwrap();
-            
+
             break;
         }
     }

@@ -92,7 +92,7 @@ pub fn save_blocks(
                 hex::encode(&t.r),
                 hex::encode(&t.s),
             );
-            
+
             // if "to" adddress is empty, calculates the transaction address
             if t.to.is_empty() {
                 info!("Calculating contract address");
@@ -127,7 +127,9 @@ pub fn save_blocks(
     let mut contract_writer = transaction
         .copy_in(format!("COPY {}.contracts FROM stdin (DELIMITER ';')", schema_name).as_str())
         .unwrap();
-    contract_writer.write_all(contracts_string.as_bytes()).unwrap();
+    contract_writer
+        .write_all(contracts_string.as_bytes())
+        .unwrap();
     contract_writer.finish().unwrap();
 
     for txs in transactions_strings {
