@@ -95,7 +95,7 @@ pub fn save_blocks(
             
             // if "to" adddress is empty, calculates the transaction address
             if t.to.is_empty() {
-                info!("Transaction address calculated");
+                info!("Calculating contract address");
                 let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
                 let tmp = format!(
                     "\\\\x{};\\\\x{}\n",
