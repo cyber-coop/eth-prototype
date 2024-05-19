@@ -550,7 +550,7 @@ mod tests {
     fn calculate_tx() {
         let sender: Vec<u8> = hex::decode("bcB8DA04C3A6A6E92da829C305ba523e0ba3e804").unwrap();
         let nonce: u32 = 0;
-        let contract_address = calculate_tx_addr(sender, nonce);
+        let contract_address = calculate_tx_addr(&sender, &nonce);
         assert_eq!(
             hex::encode(contract_address),
             "7c4ed2ec55cfc474fa0249db61c0145d3280b914"
