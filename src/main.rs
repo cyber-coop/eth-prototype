@@ -269,7 +269,7 @@ fn main() {
     // Create a simple streaming channel (limited buffer of 4 batch of 1024 blocks to avoid filling ram)
     let (tx, rx) = sync_channel(4);
 
-    let _thread_handle = thread::spawn(move || {
+    let database_handle = thread::spawn(move || {
         info!("Starting database thread");
 
         // Connect to database
@@ -459,6 +459,10 @@ fn main() {
 
         if current_height == 0 {
             info!("Data fully synced");
+
+            // need to wait for database thread to finish
+            database_handle.join().unwrap();
+
             break;
         }
     }

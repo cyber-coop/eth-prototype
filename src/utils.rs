@@ -399,11 +399,11 @@ pub fn read_message(
     return uncrypted_body;
 }
 
-pub fn calculate_tx_addr(sender: Vec<u8>, nonce: u32) -> Vec<u8> {
+pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
     let mut rlp_encoded = RlpStream::new();
     rlp_encoded.begin_unbounded_list();
-    rlp_encoded.append(&sender);
-    rlp_encoded.append(&nonce);
+    rlp_encoded.append(sender);
+    rlp_encoded.append(nonce);
     rlp_encoded.finalize_unbounded_list();
 
     let mut hasher = Keccak256::new();
@@ -550,7 +550,7 @@ mod tests {
     fn calculate_tx() {
         let sender: Vec<u8> = hex::decode("bcB8DA04C3A6A6E92da829C305ba523e0ba3e804").unwrap();
         let nonce: u32 = 0;
-        let contract_address = calculate_tx_addr(sender, nonce);
+        let contract_address = calculate_tx_addr(&sender, &nonce);
         assert_eq!(
             hex::encode(contract_address),
             "7c4ed2ec55cfc474fa0249db61c0145d3280b914"
