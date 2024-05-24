@@ -109,12 +109,27 @@ pub struct Transaction {
 }
 
 // We might want more data later
+// TODO: Instead of Vec, use byte array with defined length (example: [u8;32])
 #[derive(Clone, Debug)]
 pub struct Block {
-    pub number: u32,
     pub hash: Vec<u8>,
-    pub parenthash: Vec<u8>,
+    pub parent_hash: Vec<u8>,
+    pub ommers_hash:Vec<u8>,
+    pub coinbase: Vec<u8>,
+    pub state_root: Vec<u8>,
+    pub txs_root: Vec<u8>,
+    pub receipts_root: Vec<u8>,
+    pub bloom: Vec<u8>,
+    pub difficulty: u64,
+    pub number: u32,
+    pub gas_limit: u32,
+    pub gas_used: u32,
+    pub time: u32,
     pub extradata: Vec<u8>,
+    pub mix_digest: Vec<u8>,
+    pub block_nonce: Vec<u8>,
+    pub basefee_per_gas: u32,
+    pub withdrawals_root: Vec<u8>,
 }
 
 #[cfg(test)]

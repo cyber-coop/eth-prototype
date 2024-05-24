@@ -141,31 +141,48 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
         let block_header = block_headers.at(i).unwrap();
 
         let parent_hash: Vec<u8> = block_header.at(0).unwrap().as_val().unwrap();
-        // let ommers_hash = block_header.at(1).unwrap().as_raw();
-        // let coinbase = block_header.at(2).unwrap().as_raw();
-        // let state_root = block_header.at(3).unwrap().as_raw();
-        // let txs_root = block_header.at(4).unwrap().as_raw();
-        // let receipts_root = block_header.at(5).unwrap().as_raw();
-        // let bloom = block_header.at(6).unwrap().as_raw();
-        // let difficulty: u64 = block_header.at(7).unwrap().as_val().unwrap();
+        let ommers_hash: Vec<u8> = block_header.at(1).unwrap().as_val().unwrap();
+        let coinbase: Vec<u8> = block_header.at(2).unwrap().as_val().unwrap();
+        let state_root: Vec<u8> = block_header.at(3).unwrap().as_val().unwrap();
+        let txs_root: Vec<u8> = block_header.at(4).unwrap().as_val().unwrap();
+        let receipts_root: Vec<u8> = block_header.at(5).unwrap().as_val().unwrap();
+        let bloom: Vec<u8> = block_header.at(6).unwrap().as_val().unwrap();
+        let difficulty: u64 = block_header.at(7).unwrap().as_val().unwrap();
         let number: u32 = block_header.at(8).unwrap().as_val().unwrap();
-        // let gas_limit: u32 = block_header.at(9).unwrap().as_val().unwrap();
-        // let gas_used: u32 = block_header.at(10).unwrap().as_val().unwrap();
-        // let time: u32 = block_header.at(11).unwrap().as_val().unwrap();
+        let gas_limit: u32 = block_header.at(9).unwrap().as_val().unwrap();
+        let gas_used: u32 = block_header.at(10).unwrap().as_val().unwrap();
+        let time: u32 = block_header.at(11).unwrap().as_val().unwrap();
         let extradata: Vec<u8> = block_header.at(12).unwrap().as_val().unwrap();
-        // let mix_digest = block_header.at(13).unwrap().as_raw();
-        // let block_nonce = block_header.at(14).unwrap().as_raw();
-        //let basefee_per_gas: u32 = block_header.at(15).unwrap().as_val().unwrap();
-
+        let mix_digest: Vec<u8> = block_header.at(13).unwrap().as_val().unwrap();
+        let block_nonce: Vec<u8> = block_header.at(14).unwrap().as_val().unwrap();
+        let basefee_per_gas: u32 = block_header.at(15).unwrap().as_val().unwrap();
+        let mut withdrawals_root: Vec<u8> = vec![];
+        if block_header.at(16).is_ok() {
+            withdrawals_root = block_header.at(16).unwrap().as_val().unwrap();
+        }
         // get hash
         let mut hasher = Keccak256::new();
         hasher.update(block_header.as_raw());
         let hash = hasher.finalize();
         hashes.push(Block {
-            number,
             hash: hash.to_vec(),
-            parenthash: parent_hash.to_vec(),
-            extradata: extradata.to_vec(),
+            parent_hash,
+            ommers_hash,
+            coinbase,
+            state_root,
+            txs_root,
+            receipts_root,
+            bloom,
+            difficulty,
+            number,
+            gas_limit,
+            gas_used,
+            time,
+            extradata,
+            mix_digest,
+            block_nonce,
+            basefee_per_gas,
+            withdrawals_root,
         });
 
         trace!("Block hash : {}", hex::encode(&hash));
