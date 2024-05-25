@@ -76,7 +76,7 @@ pub fn save_blocks(
     info!("starting to format blocks and transactions");
     blocks.iter().for_each(|(b, txs)| {
         let tmp = format!(
-            "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{};\n",
+            "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
             hex::encode(&b.hash),
             hex::encode(&b.parent_hash),
             hex::encode(&b.ommers_hash),
@@ -96,7 +96,6 @@ pub fn save_blocks(
             b.basefee_per_gas,
             hex::encode(&b.withdrawals_root),
         );
-        println!("{}", tmp);
 
         blocks_string.push_str(&tmp);
         txs.iter().for_each(|t| {
