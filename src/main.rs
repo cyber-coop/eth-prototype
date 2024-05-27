@@ -71,7 +71,7 @@ fn main() {
 
     // get the hash of the next block in the chain going reverse
     // we should check if we are at the genesis block and that the parenthash is 0x0000......
-    let result = postgres_client.query(format!("SELECT parenthash FROM {0}.blocks WHERE height = (SELECT MIN(height) FROM {0}.blocks);", network_arg).as_str(), &[]).unwrap();
+    let result = postgres_client.query(format!("SELECT parent_hash FROM {0}.blocks WHERE number = (SELECT MIN(number) FROM {0}.blocks);", network_arg).as_str(), &[]).unwrap();
 
     if result.len() > 0 {
         let row = &result[0];
@@ -164,7 +164,7 @@ fn main() {
      ******************/
 
     let remote_data = [shared_mac_data, &payload].concat();
-    let (mut ingress_aes, mut ingress_mac, mut egress_aes, mut egress_mac) = utils::setup_frame(
+    let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
         remote_nonce,
         nonce,
         ephemeral_shared_secret,
@@ -388,7 +388,7 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parenthash.to_vec();
+        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
 
         /******************
          *

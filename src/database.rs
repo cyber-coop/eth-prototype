@@ -5,21 +5,36 @@ use std::time::Instant;
 use crate::types::{Block, Transaction};
 use crate::utils;
 
+// TODO: comment the column name
 pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     let query = format!(
         "CREATE SCHEMA IF NOT EXISTS {schema_name};
     CREATE TABLE IF NOT EXISTS {schema_name}.blocks (
-        height OID NOT NULL,
-        hash BYTEA,
-        parenthash BYTEA NOT NULL,
-        extradata BYTEA NOT NULL
+        hash BYTEA NOT NULL,
+        parent_hash BYTEA NOT NULL,
+        ommers_hash BYTEA NOT NULL,
+        coinbase BYTEA NOT NULL,
+        state_root BYTEA NOT NULL,
+        txs_root BYTEA NOT NULL,
+        receipts_root BYTEA NOT NULL,
+        bloom BYTEA NOT NULL,
+        difficulty BIGINT NOT NULL,
+        number INTEGER NOT NULL,
+        gas_limit INTEGER NOT NULL,
+        gas_used INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        extradata BYTEA NOT NULL,
+        mix_digest BYTEA NOT NULL,
+        block_nonce BYTEA NOT NULL,
+        basefee_per_gas INTEGER NOT NULL,
+        withdrawals_root BYTEA NOT NULL
     );
     CREATE TABLE IF NOT EXISTS {schema_name}.transactions (
         txid BYTEA NOT NULL,
         tx_type SMALLINT NOT NULL,
         block BYTEA NOT NULL,
         chain_id BIGINT,
-        nonce OID NOT NULL,
+        nonce INTEGER NOT NULL,
         gas_price NUMERIC(78),
         max_priority_fee_per_gas BIGINT,
         max_fee_per_gas BIGINT,
@@ -61,11 +76,25 @@ pub fn save_blocks(
     info!("starting to format blocks and transactions");
     blocks.iter().for_each(|(b, txs)| {
         let tmp = format!(
-            "{};\\\\x{};\\\\x{};\\\\x{}\n",
-            b.number,
+            "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
             hex::encode(&b.hash),
-            hex::encode(&b.parenthash),
-            hex::encode(&b.extradata)
+            hex::encode(&b.parent_hash),
+            hex::encode(&b.ommers_hash),
+            hex::encode(&b.coinbase),
+            hex::encode(&b.state_root),
+            hex::encode(&b.txs_root),
+            hex::encode(&b.receipts_root),
+            hex::encode(&b.bloom),
+            b.difficulty,
+            b.number,
+            b.gas_limit,
+            b.gas_used,
+            b.time,
+            hex::encode(&b.extradata),
+            hex::encode(&b.mix_digest),
+            hex::encode(&b.block_nonce),
+            b.basefee_per_gas,
+            hex::encode(&b.withdrawals_root),
         );
 
         blocks_string.push_str(&tmp);
