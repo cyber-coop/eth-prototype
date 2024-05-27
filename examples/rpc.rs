@@ -243,7 +243,7 @@ fn main() {
     let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
     // update block hash
-    current_hash = block_headers.last().unwrap().parenthash.to_vec();
+    current_hash = block_headers.last().unwrap().parent_hash.to_vec();
 
     /******************
      *

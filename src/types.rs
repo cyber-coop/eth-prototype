@@ -114,7 +114,7 @@ pub struct Transaction {
 pub struct Block {
     pub hash: Vec<u8>,
     pub parent_hash: Vec<u8>,
-    pub ommers_hash:Vec<u8>,
+    pub ommers_hash: Vec<u8>,
     pub coinbase: Vec<u8>,
     pub state_root: Vec<u8>,
     pub txs_root: Vec<u8>,

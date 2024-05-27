@@ -164,7 +164,7 @@ fn main() {
      ******************/
 
     let remote_data = [shared_mac_data, &payload].concat();
-    let (mut ingress_aes, mut ingress_mac, mut egress_aes, mut egress_mac) = utils::setup_frame(
+    let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
         remote_nonce,
         nonce,
         ephemeral_shared_secret,
