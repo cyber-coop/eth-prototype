@@ -278,7 +278,7 @@ fn main() {
 
         // while recv save blocks in database
         loop {
-            let blocks: Vec<(Block, Vec<Transaction>)> = rx.recv().unwrap();
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = rx.recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -401,7 +401,7 @@ fn main() {
             .map(|b| b.hash.clone())
             .collect::<Vec<Vec<u8>>>();
 
-        let mut transactions: Vec<Vec<Transaction>> = vec![];
+        let mut transactions: Vec<(Vec<Transaction>, Vec<Block>)> = vec![];
 
         while transactions.len() < hashes.len() {
             let get_blocks_bodies =
@@ -443,10 +443,10 @@ fn main() {
             info!("After parsing");
         }
 
-        let mut blocks: Vec<(Block, Vec<Transaction>)> = vec![];
+        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = vec![];
         let t_iter = transactions.iter();
-        t_iter.enumerate().for_each(|(i, txs)| {
-            blocks.push((block_headers[i].clone(), txs.to_vec()));
+        t_iter.enumerate().for_each(|(i, (txs, ommers))| {
+            blocks.push((block_headers[i].clone(), txs.to_vec(), ommers.to_vec()));
         });
 
         let current_height = blocks.last().unwrap().0.number;

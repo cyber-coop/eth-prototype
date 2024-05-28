@@ -54,6 +54,11 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         txid BYTEA NOT NULL,
         address BYTEA NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS {schema_name}.ommers (
+        hash BYTEA NOT NULL,
+        number INTEGER NOT NULL,
+        canonical_hash BYTEA NOT NULL
+    );
     "
     );
 
@@ -61,7 +66,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
 }
 
 pub fn save_blocks(
-    blocks: &Vec<(Block, Vec<Transaction>)>,
+    blocks: &Vec<(Block, Vec<Transaction>, Vec<Block>)>,
     schema_name: &String,
     postgres_client: &mut Client,
 ) {
@@ -69,12 +74,13 @@ pub fn save_blocks(
     let now = Instant::now();
     let mut blocks_string: String = String::new();
     let mut transactions_string: String = String::new();
+    let mut ommers_string: String = String::new();
     // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
     let mut transactions_strings: Vec<String> = vec![];
     let mut contracts_string: String = String::new();
 
     info!("starting to format blocks and transactions");
-    blocks.iter().for_each(|(b, txs)| {
+    blocks.iter().for_each(|(b, txs, ommers)| {
         let tmp = format!(
             "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
             hex::encode(&b.hash),
@@ -140,6 +146,16 @@ pub fn save_blocks(
             }
             transactions_string.push_str(&tmp);
         });
+        //TODO: add ommers
+        ommers.iter().for_each(|om| {
+            let tmp = format!(
+                "\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
+                hex::encode(&om.hash),
+                om.number,
+                hex::encode(&b.hash),
+            );
+            ommers_string.push_str(&tmp);
+        });
     });
     transactions_strings.push(transactions_string.clone());
 
@@ -160,6 +176,14 @@ pub fn save_blocks(
         .write_all(contracts_string.as_bytes())
         .unwrap();
     contract_writer.finish().unwrap();
+
+    let mut ommers_writer = transaction
+        .copy_in(format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name).as_str())
+        .unwrap();
+    ommers_writer
+        .write_all(ommers_string.as_bytes())
+        .unwrap();
+    ommers_writer.finish().unwrap();
 
     for txs in transactions_strings {
         let mut transaction_writer = transaction

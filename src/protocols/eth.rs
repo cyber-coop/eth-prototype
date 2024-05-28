@@ -215,7 +215,7 @@ pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<Vec<Transaction>> {
+pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>)> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
@@ -225,7 +225,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<Vec<Transaction>> {
     // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
     let block_bodies = r.at(1).unwrap();
 
-    let mut result: Vec<Vec<Transaction>> = vec![];
+    let mut result: Vec<(Vec<Transaction>, Vec<Block>)> = vec![];
 
     let count = block_bodies.item_count().unwrap();
     for i in 0..count {
@@ -234,10 +234,13 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<Vec<Transaction>> {
 
         let transactions = block_body.at(0).unwrap();
         let count_tx = transactions.item_count().unwrap();
+        let ommers = block_body.at(1).unwrap();
+        let count_om = ommers.item_count().unwrap();
 
         trace!("Transactions count : {}", count_tx);
 
         let mut result_transactions: Vec<Transaction> = vec![];
+        let mut result_ommers: Vec<Block> = vec![];
 
         for j in 0..count_tx {
             let transaction = transactions.at(j).unwrap();
@@ -245,8 +248,67 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<Vec<Transaction>> {
             result_transactions.push(t);
         }
 
-        result.push(result_transactions);
+        for k in 0..count_om{
+            let ommer = ommers.at(k).unwrap();
+            let om = parse_block_header(ommer.as_raw().to_vec());
+            result_ommers.push(om);
+        }
+
+        result.push((result_transactions, result_ommers));
     }
 
     return result;
+}
+
+pub fn parse_block_header (payload: Vec<u8>) -> Block {
+    let r = rlp::Rlp::new(&payload);
+
+    assert!(r.is_list());
+
+    let parent_hash: Vec<u8> = r.at(0).unwrap().as_val().unwrap();
+    let ommers_hash: Vec<u8> = r.at(1).unwrap().as_val().unwrap();
+    let coinbase: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
+    let state_root: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
+    let txs_root: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
+    let receipts_root: Vec<u8> = r.at(5).unwrap().as_val().unwrap();
+    let bloom: Vec<u8> = r.at(6).unwrap().as_val().unwrap();
+    let difficulty: u64 = r.at(7).unwrap().as_val().unwrap();
+    let number: u32 = r.at(8).unwrap().as_val().unwrap();
+    let gas_limit: u32 = r.at(9).unwrap().as_val().unwrap();
+    let gas_used: u32 = r.at(10).unwrap().as_val().unwrap();
+    let time: u32 = r.at(11).unwrap().as_val().unwrap();
+    let extradata: Vec<u8> = r.at(12).unwrap().as_val().unwrap();
+    let mix_digest: Vec<u8> = r.at(13).unwrap().as_val().unwrap();
+    let block_nonce: Vec<u8> = r.at(14).unwrap().as_val().unwrap();
+    let basefee_per_gas: u32 = r.at(15).unwrap().as_val().unwrap();
+    let mut withdrawals_root: Vec<u8> = vec![];
+    if r.at(16).is_ok() {
+        withdrawals_root = r.at(16).unwrap().as_val().unwrap();
+    }
+    // get hash
+    let mut hasher = Keccak256::new();
+    hasher.update(r.as_raw());
+    let hash = hasher.finalize();
+    trace!("Block hash : {}", hex::encode(&hash));
+    trace!("Number : {}", number);
+    return Block {
+        hash: hash.to_vec(),
+        parent_hash,
+        ommers_hash,
+        coinbase,
+        state_root,
+        txs_root,
+        receipts_root,
+        bloom,
+        difficulty,
+        number,
+        gas_limit,
+        gas_used,
+        time,
+        extradata,
+        mix_digest,
+        block_nonce,
+        basefee_per_gas,
+        withdrawals_root,
+    };
 }
