@@ -155,7 +155,7 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
         let extradata: Vec<u8> = block_header.at(12).unwrap().as_val().unwrap();
         let mix_digest: Vec<u8> = block_header.at(13).unwrap().as_val().unwrap();
         let block_nonce: Vec<u8> = block_header.at(14).unwrap().as_val().unwrap();
-        let basefee_per_gas: u32 = block_header.at(15).unwrap().as_val().unwrap();
+        let basefee_per_gas: u64 = block_header.at(15).unwrap().as_val().unwrap();
         let mut withdrawals_root: Vec<u8> = vec![];
         if block_header.at(16).is_ok() {
             withdrawals_root = block_header.at(16).unwrap().as_val().unwrap();
@@ -280,7 +280,7 @@ pub fn parse_block_header (payload: Vec<u8>) -> Block {
     let extradata: Vec<u8> = r.at(12).unwrap().as_val().unwrap();
     let mix_digest: Vec<u8> = r.at(13).unwrap().as_val().unwrap();
     let block_nonce: Vec<u8> = r.at(14).unwrap().as_val().unwrap();
-    let basefee_per_gas: u32 = r.at(15).unwrap().as_val().unwrap();
+    let basefee_per_gas: u64 = r.at(15).unwrap().as_val().unwrap();
     let mut withdrawals_root: Vec<u8> = vec![];
     if r.at(16).is_ok() {
         withdrawals_root = r.at(16).unwrap().as_val().unwrap();

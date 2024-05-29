@@ -330,6 +330,8 @@ fn main() {
                 continue;
             }
 
+            
+
             if uncrypted_body[0] - 16 == 3 {
                 // Rospten node keep asking us for new block headers that we don't have
                 // Working with Geth/v1.10.23-stable-d901d853 but not v1.10.21
@@ -380,7 +382,7 @@ fn main() {
             code = uncrypted_body[0] - 16;
             if code == 4 {
                 break;
-            }
+            }            
         }
 
         assert_eq!(code, 4);

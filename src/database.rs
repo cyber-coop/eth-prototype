@@ -26,7 +26,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         extradata BYTEA NOT NULL,
         mix_digest BYTEA NOT NULL,
         block_nonce BYTEA NOT NULL,
-        basefee_per_gas INTEGER NOT NULL,
+        basefee_per_gas BIGINT NOT NULL,
         withdrawals_root BYTEA NOT NULL
     );
     CREATE TABLE IF NOT EXISTS {schema_name}.transactions (
