@@ -502,7 +502,7 @@ mod tests {
 
         let recid = secp256k1::ecdsa::RecoveryId::from_i32(v as i32).unwrap();
 
-        let msg = secp256k1::Message::from_slice(&digest).unwrap();
+        let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
         let sig = secp256k1::ecdsa::RecoverableSignature::from_compact(&sig_data, recid).unwrap();
 
         let _pubkey = secp256k1::SECP256K1.recover_ecdsa(&msg, &sig).unwrap();
