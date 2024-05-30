@@ -135,61 +135,15 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
 
     assert!(block_headers.is_list());
 
-    let mut hashes = vec![];
+    let mut headers = vec![];
     let count = block_headers.item_count().unwrap();
     for i in 0..count {
-        let block_header = block_headers.at(i).unwrap();
-
-        let parent_hash: Vec<u8> = block_header.at(0).unwrap().as_val().unwrap();
-        let ommers_hash: Vec<u8> = block_header.at(1).unwrap().as_val().unwrap();
-        let coinbase: Vec<u8> = block_header.at(2).unwrap().as_val().unwrap();
-        let state_root: Vec<u8> = block_header.at(3).unwrap().as_val().unwrap();
-        let txs_root: Vec<u8> = block_header.at(4).unwrap().as_val().unwrap();
-        let receipts_root: Vec<u8> = block_header.at(5).unwrap().as_val().unwrap();
-        let bloom: Vec<u8> = block_header.at(6).unwrap().as_val().unwrap();
-        let difficulty: u64 = block_header.at(7).unwrap().as_val().unwrap();
-        let number: u32 = block_header.at(8).unwrap().as_val().unwrap();
-        let gas_limit: u32 = block_header.at(9).unwrap().as_val().unwrap();
-        let gas_used: u32 = block_header.at(10).unwrap().as_val().unwrap();
-        let time: u32 = block_header.at(11).unwrap().as_val().unwrap();
-        let extradata: Vec<u8> = block_header.at(12).unwrap().as_val().unwrap();
-        let mix_digest: Vec<u8> = block_header.at(13).unwrap().as_val().unwrap();
-        let block_nonce: Vec<u8> = block_header.at(14).unwrap().as_val().unwrap();
-        let basefee_per_gas: u64 = block_header.at(15).unwrap().as_val().unwrap();
-        let mut withdrawals_root: Vec<u8> = vec![];
-        if block_header.at(16).is_ok() {
-            withdrawals_root = block_header.at(16).unwrap().as_val().unwrap();
-        }
-        // get hash
-        let mut hasher = Keccak256::new();
-        hasher.update(block_header.as_raw());
-        let hash = hasher.finalize();
-        hashes.push(Block {
-            hash: hash.to_vec(),
-            parent_hash,
-            ommers_hash,
-            coinbase,
-            state_root,
-            txs_root,
-            receipts_root,
-            bloom,
-            difficulty,
-            number,
-            gas_limit,
-            gas_used,
-            time,
-            extradata,
-            mix_digest,
-            block_nonce,
-            basefee_per_gas,
-            withdrawals_root,
-        });
-
-        trace!("Block hash : {}", hex::encode(&hash));
-        trace!("Number : {}", number);
+        let block_header = block_headers.at(i).unwrap().as_raw();
+        let block = util_parse_block_header(block_header.to_vec());
+        headers.push(block);
     }
 
-    return hashes;
+    return headers;
 }
 
 pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
@@ -250,7 +204,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
 
         for k in 0..count_om {
             let ommer = ommers.at(k).unwrap();
-            let om = parse_block_header(ommer.as_raw().to_vec());
+            let om = util_parse_block_header(ommer.as_raw().to_vec());
             result_ommers.push(om);
         }
 
@@ -260,7 +214,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
     return result;
 }
 
-pub fn parse_block_header(payload: Vec<u8>) -> Block {
+pub fn util_parse_block_header(payload: Vec<u8>) -> Block {
     let r = rlp::Rlp::new(&payload);
 
     assert!(r.is_list());
