@@ -248,7 +248,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
             result_transactions.push(t);
         }
 
-        for k in 0..count_om{
+        for k in 0..count_om {
             let ommer = ommers.at(k).unwrap();
             let om = parse_block_header(ommer.as_raw().to_vec());
             result_ommers.push(om);
@@ -260,7 +260,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
     return result;
 }
 
-pub fn parse_block_header (payload: Vec<u8>) -> Block {
+pub fn parse_block_header(payload: Vec<u8>) -> Block {
     let r = rlp::Rlp::new(&payload);
 
     assert!(r.is_list());

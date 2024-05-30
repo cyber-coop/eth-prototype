@@ -130,7 +130,6 @@ pub fn save_blocks(
 
             // if "to" adddress is empty, calculates the transaction address
             if t.to.is_empty() {
-                info!("Calculating contract address");
                 let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
                 let tmp = format!(
                     "\\\\x{};\\\\x{}\n",
@@ -180,9 +179,7 @@ pub fn save_blocks(
     let mut ommers_writer = transaction
         .copy_in(format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name).as_str())
         .unwrap();
-    ommers_writer
-        .write_all(ommers_string.as_bytes())
-        .unwrap();
+    ommers_writer.write_all(ommers_string.as_bytes()).unwrap();
     ommers_writer.finish().unwrap();
 
     for txs in transactions_strings {
