@@ -161,7 +161,7 @@ pub fn create_auth_eip8(
     let ephemeral_signing_key = secp256k1::SecretKey::from_slice(&ephemeral_privkey).unwrap();
     let (recid, sig) = secp256k1::SECP256K1
         .sign_ecdsa_recoverable(
-            &secp256k1::Message::from_slice(&msg_hash).unwrap(),
+            &secp256k1::Message::from_digest_slice(&msg_hash).unwrap(),
             &ephemeral_signing_key,
         )
         .serialize_compact();
