@@ -139,7 +139,7 @@ fn main() {
 
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
-    let payload = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
+    let _payload = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
 
     /******************
      *
