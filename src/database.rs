@@ -182,7 +182,11 @@ pub fn save_blocks(
     ommers_writer.write_all(ommers_string.as_bytes()).unwrap();
     ommers_writer.finish().unwrap();
 
+    let mut chunk_index = 0;
+    let number_of_chunks = transactions_strings.len();
     for txs in transactions_strings {
+        info!("Sending transactions chunk {}/{}", chunk_index, number_of_chunks);
+
         let mut transaction_writer = transaction
             .copy_in(
                 format!(
@@ -194,6 +198,8 @@ pub fn save_blocks(
             .unwrap();
         transaction_writer.write_all(txs.as_bytes()).unwrap();
         transaction_writer.finish().unwrap();
+
+        chunk_index = chunk_index + 1;
     }
 
     // commit the transaction
