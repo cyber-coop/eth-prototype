@@ -435,12 +435,8 @@ fn main() {
             }
             assert_eq!(code, 6);
 
-            info!("Before parsing");
-
             let tmp_txs = eth::parse_block_bodies(uncrypted_body[1..].to_vec());
             transactions.extend(tmp_txs);
-
-            info!("After parsing");
         }
 
         let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = vec![];
