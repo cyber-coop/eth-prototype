@@ -185,7 +185,7 @@ pub fn save_blocks(
     let mut chunk_index = 0;
     let number_of_chunks = transactions_strings.len();
     for txs in transactions_strings {
-        info!("Sending transactions chunk {}/{}", chunk_index, number_of_chunks);
+        info!("Sending transactions chunk {}/{} (size {} bytes)", chunk_index, number_of_chunks, txs.as_bytes().len());
 
         let mut transaction_writer = transaction
             .copy_in(
