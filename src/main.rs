@@ -266,8 +266,8 @@ fn main() {
      *
      ********************/
 
-    // Create a simple streaming channel (limited buffer of 3 batchs of 1024 blocks to avoid filling ram)
-    let (tx, rx) = sync_channel(3);
+    // Create a simple streaming channel (limited buffer of 1 batchs of 1024 blocks to avoid filling ram)
+    let (tx, rx) = sync_channel(1);
 
     let database_handle = thread::spawn(move || {
         info!("Starting database thread");
