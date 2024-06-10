@@ -234,7 +234,10 @@ pub fn util_parse_block_header(payload: Vec<u8>) -> Block {
     let extradata: Vec<u8> = r.at(12).unwrap().as_val().unwrap();
     let mix_digest: Vec<u8> = r.at(13).unwrap().as_val().unwrap();
     let block_nonce: Vec<u8> = r.at(14).unwrap().as_val().unwrap();
-    let basefee_per_gas: u64 = r.at(15).unwrap().as_val().unwrap();
+    let mut basefee_per_gas: u64 = 0;
+    if r.at(15).is_ok() {
+        basefee_per_gas = r.at(15).unwrap().as_val().unwrap();
+    }
     let mut withdrawals_root: Vec<u8> = vec![];
     if r.at(16).is_ok() {
         withdrawals_root = r.at(16).unwrap().as_val().unwrap();
