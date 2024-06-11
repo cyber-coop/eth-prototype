@@ -266,7 +266,7 @@ fn main() {
      *
      ********************/
 
-    // Create a simple streaming channel (limited buffer of 1 batchs of 1024 blocks to avoid filling ram)
+    // Creates the desired number of streaming channels (configruable in the config.toml file according to RAM capacity)
     let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
 
     let database_handle = thread::spawn(move || {
