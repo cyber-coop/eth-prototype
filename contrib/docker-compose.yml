@@ -18,15 +18,13 @@ services:
   postgres:
     image: "postgres:latest"
     container_name: "postgres"
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: wow
       POSTGRES_DB: blockchains
     # ¡IMPORTANT! If you don't want to lose your data you should uncomment this
-    # volumes:
-    #   - ./data/:/var/lib/postgresql/data/
+    volumes:
+      - ./data/:/var/lib/postgresql/data/
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s

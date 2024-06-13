@@ -9,7 +9,7 @@ use crate::utils;
 pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     let query = format!(
         "CREATE SCHEMA IF NOT EXISTS {schema_name};
-    CREATE TABLE IF NOT EXISTS {schema_name}.blocks (
+    CREATE UNLOGGED TABLE IF NOT EXISTS {schema_name}.blocks (
         hash BYTEA NOT NULL,
         parent_hash BYTEA NOT NULL,
         ommers_hash BYTEA NOT NULL,
@@ -26,10 +26,10 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         extradata BYTEA NOT NULL,
         mix_digest BYTEA NOT NULL,
         block_nonce BYTEA NOT NULL,
-        basefee_per_gas INTEGER NOT NULL,
+        basefee_per_gas BIGINT NOT NULL,
         withdrawals_root BYTEA NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS {schema_name}.transactions (
+    CREATE UNLOGGED TABLE IF NOT EXISTS {schema_name}.transactions (
         txid BYTEA NOT NULL,
         tx_type SMALLINT NOT NULL,
         block BYTEA NOT NULL,
@@ -50,9 +50,28 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         r BYTEA NOT NULL,
         s BYTEA NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS {schema_name}.contracts (
+    CREATE UNLOGGED TABLE IF NOT EXISTS {schema_name}.contracts (
         txid BYTEA NOT NULL,
         address BYTEA NOT NULL
+    );
+    CREATE UNLOGGED TABLE IF NOT EXISTS {schema_name}.ommers (
+        hash BYTEA NOT NULL,
+        canonical_hash BYTEA NOT NULL,
+        coinbase BYTEA NOT NULL,
+        state_root BYTEA NOT NULL,
+        txs_root BYTEA NOT NULL,
+        receipts_root BYTEA NOT NULL,
+        bloom BYTEA NOT NULL,
+        difficulty BIGINT NOT NULL,
+        number INTEGER NOT NULL,
+        gas_limit INTEGER NOT NULL,
+        gas_used INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        extradata BYTEA NOT NULL,
+        mix_digest BYTEA NOT NULL,
+        block_nonce BYTEA NOT NULL,
+        basefee_per_gas BIGINT NOT NULL,
+        withdrawals_root BYTEA NOT NULL
     );
     "
     );
@@ -61,7 +80,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
 }
 
 pub fn save_blocks(
-    blocks: &Vec<(Block, Vec<Transaction>)>,
+    blocks: &Vec<(Block, Vec<Transaction>, Vec<Block>)>,
     schema_name: &String,
     postgres_client: &mut Client,
 ) {
@@ -69,12 +88,13 @@ pub fn save_blocks(
     let now = Instant::now();
     let mut blocks_string: String = String::new();
     let mut transactions_string: String = String::new();
+    let mut ommers_string: String = String::new();
     // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
     let mut transactions_strings: Vec<String> = vec![];
     let mut contracts_string: String = String::new();
 
     info!("starting to format blocks and transactions");
-    blocks.iter().for_each(|(b, txs)| {
+    blocks.iter().for_each(|(b, txs, ommers)| {
         let tmp = format!(
             "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
             hex::encode(&b.hash),
@@ -124,7 +144,6 @@ pub fn save_blocks(
 
             // if "to" adddress is empty, calculates the transaction address
             if t.to.is_empty() {
-                info!("Calculating contract address");
                 let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
                 let tmp = format!(
                     "\\\\x{};\\\\x{}\n",
@@ -139,6 +158,30 @@ pub fn save_blocks(
                 transactions_string = String::new();
             }
             transactions_string.push_str(&tmp);
+        });
+        //TODO: add ommers
+        ommers.iter().for_each(|om| {
+            let tmp = format!(
+                "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
+                hex::encode(&om.hash),
+                hex::encode(&b.hash),
+                hex::encode(&om.coinbase),
+                hex::encode(&om.state_root),
+                hex::encode(&om.txs_root),
+                hex::encode(&om.receipts_root),
+                hex::encode(&om.bloom),
+                om.difficulty,
+                om.number,
+                om.gas_limit,
+                om.gas_used,
+                om.time,
+                hex::encode(&om.extradata),
+                hex::encode(&om.mix_digest),
+                hex::encode(&om.block_nonce),
+                om.basefee_per_gas,
+                hex::encode(&om.withdrawals_root),
+            );
+            ommers_string.push_str(&tmp);
         });
     });
     transactions_strings.push(transactions_string.clone());
@@ -161,7 +204,22 @@ pub fn save_blocks(
         .unwrap();
     contract_writer.finish().unwrap();
 
+    let mut ommers_writer = transaction
+        .copy_in(format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name).as_str())
+        .unwrap();
+    ommers_writer.write_all(ommers_string.as_bytes()).unwrap();
+    ommers_writer.finish().unwrap();
+
+    let mut chunk_index = 0;
+    let number_of_chunks = transactions_strings.len();
     for txs in transactions_strings {
+        info!(
+            "Sending transactions chunk {}/{} (size {} bytes)",
+            chunk_index,
+            number_of_chunks,
+            txs.as_bytes().len()
+        );
+
         let mut transaction_writer = transaction
             .copy_in(
                 format!(
@@ -173,6 +231,8 @@ pub fn save_blocks(
             .unwrap();
         transaction_writer.write_all(txs.as_bytes()).unwrap();
         transaction_writer.finish().unwrap();
+
+        chunk_index = chunk_index + 1;
     }
 
     // commit the transaction

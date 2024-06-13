@@ -128,7 +128,7 @@ pub struct Block {
     pub extradata: Vec<u8>,
     pub mix_digest: Vec<u8>,
     pub block_nonce: Vec<u8>,
-    pub basefee_per_gas: u32,
+    pub basefee_per_gas: u64,
     pub withdrawals_root: Vec<u8>,
 }
 

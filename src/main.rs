@@ -266,8 +266,8 @@ fn main() {
      *
      ********************/
 
-    // Create a simple streaming channel (limited buffer of 4 batch of 1024 blocks to avoid filling ram)
-    let (tx, rx) = sync_channel(4);
+    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
+    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
 
     let database_handle = thread::spawn(move || {
         info!("Starting database thread");
@@ -278,7 +278,7 @@ fn main() {
 
         // while recv save blocks in database
         loop {
-            let blocks: Vec<(Block, Vec<Transaction>)> = rx.recv().unwrap();
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = rx.recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -401,7 +401,7 @@ fn main() {
             .map(|b| b.hash.clone())
             .collect::<Vec<Vec<u8>>>();
 
-        let mut transactions: Vec<Vec<Transaction>> = vec![];
+        let mut transactions: Vec<(Vec<Transaction>, Vec<Block>)> = vec![];
 
         while transactions.len() < hashes.len() {
             let get_blocks_bodies =
@@ -435,18 +435,14 @@ fn main() {
             }
             assert_eq!(code, 6);
 
-            info!("Before parsing");
-
             let tmp_txs = eth::parse_block_bodies(uncrypted_body[1..].to_vec());
             transactions.extend(tmp_txs);
-
-            info!("After parsing");
         }
 
-        let mut blocks: Vec<(Block, Vec<Transaction>)> = vec![];
+        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = vec![];
         let t_iter = transactions.iter();
-        t_iter.enumerate().for_each(|(i, txs)| {
-            blocks.push((block_headers[i].clone(), txs.to_vec()));
+        t_iter.enumerate().for_each(|(i, (txs, ommers))| {
+            blocks.push((block_headers[i].clone(), txs.to_vec(), ommers.to_vec()));
         });
 
         let current_height = blocks.last().unwrap().0.number;
