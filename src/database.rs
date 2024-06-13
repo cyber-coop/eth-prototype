@@ -56,8 +56,22 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     );
     CREATE UNLOGGED TABLE IF NOT EXISTS {schema_name}.ommers (
         hash BYTEA NOT NULL,
+        canonical_hash BYTEA NOT NULL,
+        coinbase BYTEA NOT NULL,
+        state_root BYTEA NOT NULL,
+        txs_root BYTEA NOT NULL,
+        receipts_root BYTEA NOT NULL,
+        bloom BYTEA NOT NULL,
+        difficulty BIGINT NOT NULL,
         number INTEGER NOT NULL,
-        canonical_hash BYTEA NOT NULL
+        gas_limit INTEGER NOT NULL,
+        gas_used INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        extradata BYTEA NOT NULL,
+        mix_digest BYTEA NOT NULL,
+        block_nonce BYTEA NOT NULL,
+        basefee_per_gas BIGINT NOT NULL,
+        withdrawals_root BYTEA NOT NULL
     );
     "
     );
@@ -148,10 +162,24 @@ pub fn save_blocks(
         //TODO: add ommers
         ommers.iter().for_each(|om| {
             let tmp = format!(
-                "\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
+                "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
                 hex::encode(&om.hash),
-                om.number,
                 hex::encode(&b.hash),
+                hex::encode(&om.coinbase),
+                hex::encode(&om.state_root),
+                hex::encode(&om.txs_root),
+                hex::encode(&om.receipts_root),
+                hex::encode(&om.bloom),
+                om.difficulty,
+                om.number,
+                om.gas_limit,
+                om.gas_used,
+                om.time,
+                hex::encode(&om.extradata),
+                hex::encode(&om.mix_digest),
+                hex::encode(&om.block_nonce),
+                om.basefee_per_gas,
+                hex::encode(&om.withdrawals_root),
             );
             ommers_string.push_str(&tmp);
         });
