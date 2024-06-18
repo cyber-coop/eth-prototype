@@ -39,6 +39,16 @@ We can't get all the from addresses because we need to recover from signature.
 CREATE MATERIALIZED VIEW contracts AS SELECT c.address, COUNT(DISTINCT t.txid) FROM ethereum_mainnet.transactions t RIGHT JOIN ethereum_mainnet.contracts c ON c.address = t.toaddress GROUP BY c.address;
 ```
 
+## Find peers for mainnet
+
+```
+SELECT node.* FROM discv4.nodes AS node, json_to_recordset(capabilities) AS cap(name TEXT, version INT) WHERE network_id=1 AND cap.name ='eth' AND cap.version = 68 LIMIT 10;
+```
+
+```
+docker exec -t devops-postgres-1 psql -P pager=off -U postgres -d blockchains -t -c "SELECT node.address FROM discv4.nodes AS node, json_to_recordset(capabilities) AS cap(name TEXT, version INT) WHERE network_id=1 AND cap.name ='eth' AND cap.version = 68;" > ethereum_ips.txt
+```
+
 ## Troubelshooting
 
 ### Rospten transaction index
@@ -72,3 +82,4 @@ b3e448f1f95713 | \x74cdf82ad3993075dd35fd1a3f4c4146058ecf4d82f122d9abacd1a6f9e27
 ```
 
 In order to create index we need to remove one...
+
