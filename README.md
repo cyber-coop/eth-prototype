@@ -4,6 +4,18 @@ This project is an indexer for Ethereum and Ethereum forks. It takes advantage o
 
 In its current state, the indexer takes 48h to index mainnet from scratch.
 
+### Compatible networks
+
+This Ethereum P2P indexer can run on the following networks **(only on eth/67 and eth/68)**.
+
+```
+ethereum_ropsten
+ethereum_rinkeby
+ethereum_goerli
+ethereum_sepolia
+ethereum_mainnet
+binance_mainnet
+```
 
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install)
@@ -14,6 +26,8 @@ In its current state, the indexer takes 48h to index mainnet from scratch.
 ### Configuration file
 
 You first need to create a `config.toml` file. You can use the example config file `config.example.toml`, fill the missing parts and rename it as `config.toml`.
+
+You'll learn how to setup the different parts of this configuration in the next steps
 
 ```toml
 # Database info
@@ -28,40 +42,37 @@ dbname = "blockchains"
 ip = "127.0.0.1"
 port = 30303
 remote_id = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+[indexer]
+queue_size = 4
 ```
+
+
 ### Finding peers to connect with
 
 If you don't have any peer to connect with, you can grab one in this [database](https://cyber.coop/network_id/1).
 
-**NOTE**: Not all peers are working, a node-finder/tester is currently being developed.
+**NOTE**: This database updates daily and lists all "reachable" peers but some of them allow to establish a connection, some others not, you need to try them by yourself.
 
 ### Configuration on local/Docker
 
 If you want to run the indexer locally, then leave the localhost as **localhost**.
 
-If you want to run it on Docker, please set the localhost to **postgres** in the `config.toml` file.
+If you want to run it in a Docker contianer, please set the localhost to **postgres** in the `config.toml` file.
 
+### Specifying the queue size
 
-### Docker compose
+The queue size allows to optimize the indexer depending on your machine.
 
-To facilitate things, we have provided a `docker-compose.yml` file under the `contrib` folder that starts the indexer and the postgres database.
+The bigger the queue size is, the more RAM it'll use.
 
-**NOTE**: There is some modification to do in the docker compose file to make the database persistent.
+Copying data in database is slower than processing blocks, so two threads are operating.
 
-### Choosing the network
+The queue size will then specify how many batchs of 1024 blocks will be stored in the queue.
 
-This Ethereum P2P indexer can run on the following networks **(only on eth/67 and eth/68)**.
+For instance, a queue size of 4 (set as default) will store a maximum of 4 x 1024 blocks (4096 blocks).
 
-```
-ethereum_ropsten
-ethereum_rinkeby
-ethereum_goerli
-ethereum_sepolia
-ethereum_mainnet
-binance_mainnet
-```
-
-Make sure you set the desired network in the `docker-compose.yml` file.
+Depending on how much RAM you have on your machine, this might be too large so you may need to reduce it, or actually increase it for better performance.
 
 ## Run locally
 
@@ -81,7 +92,7 @@ docker ps
 
 ### Run the indexer
 
-Now you can run the indexer (replace the network by the desired one)
+Now you can run the indexer (replace the network by any of the supported networks' list)
 
 ```shell
 make run network=ethereum_mainnet
@@ -89,7 +100,14 @@ make run network=ethereum_mainnet
 
 ## Run on Docker
 
-Make sure you've set the localhost to **postgres** in the `config.toml` file, then run the following command:
+### Docker compose
+
+To facilitate things, we have provided a `docker-compose.yml` file under the `contrib` folder that starts the indexer and the postgres database.
+
+
+**NOTE**: Please uncomment the **volume** part to make the database persistent and prevent loosing data in case the container is deleted.
+
+Make sure you've set the localhost to **postgres** in the `config.toml` file, and chose the right network in the `docker-compose.yml` then run the following command:
 
 ```shell
 docker compose -f contrib/docker-compose.yml up
@@ -125,11 +143,16 @@ Now you can run the indexer:
 make run network=ethereum_mainnet
 ```
 
+## Side notes
+
+The databases tables are created as UNLOGGED tables by default, this allows to improve the speed of blocks processing
+
 ## A little benchmark
 
 Depending on your hardware configuration, the indexer can run faster or slower.
 
-Here is a test of the indexer running on two different machines (with their configurations) and their rates of total processed blocks per second to have a general idea.
+Here is a test of the indexer running on two different machines (with their characteristics) and their rates of total processed blocks per second to have a general idea.
+This test was run with logged tables, the performances are drastically better with unlogged tables.
 
 ### First machine
 
