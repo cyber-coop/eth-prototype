@@ -9,7 +9,7 @@ use crate::utils;
 pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     let query = format!(
         "CREATE SCHEMA IF NOT EXISTS {schema_name};
-    CREATE LOGGED TABLE IF NOT EXISTS {schema_name}.blocks (
+    CREATE TABLE IF NOT EXISTS {schema_name}.blocks (
         hash BYTEA NOT NULL,
         parent_hash BYTEA NOT NULL,
         ommers_hash BYTEA NOT NULL,
@@ -29,7 +29,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         basefee_per_gas BIGINT NOT NULL,
         withdrawals_root BYTEA NOT NULL
     );
-    CREATE LOGGED TABLE IF NOT EXISTS {schema_name}.transactions (
+    CREATE TABLE IF NOT EXISTS {schema_name}.transactions (
         txid BYTEA NOT NULL,
         tx_type SMALLINT NOT NULL,
         block BYTEA NOT NULL,
@@ -50,11 +50,11 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         r BYTEA NOT NULL,
         s BYTEA NOT NULL
     );
-    CREATE LOGGED TABLE IF NOT EXISTS {schema_name}.contracts (
+    CREATE TABLE IF NOT EXISTS {schema_name}.contracts (
         txid BYTEA NOT NULL,
         address BYTEA NOT NULL
     );
-    CREATE LOGGED TABLE IF NOT EXISTS {schema_name}.ommers (
+    CREATE TABLE IF NOT EXISTS {schema_name}.ommers (
         hash BYTEA NOT NULL,
         canonical_hash BYTEA NOT NULL,
         coinbase BYTEA NOT NULL,
