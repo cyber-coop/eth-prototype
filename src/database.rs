@@ -30,6 +30,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         withdrawals_root BYTEA NOT NULL
     );
     CREATE TABLE IF NOT EXISTS {schema_name}.transactions (
+        index INTEGER NOT NULL,
         txid BYTEA NOT NULL,
         tx_type SMALLINT NOT NULL,
         block BYTEA NOT NULL,
@@ -118,9 +119,11 @@ pub fn save_blocks(
         );
 
         blocks_string.push_str(&tmp);
+        let mut index = 0;
         txs.iter().for_each(|t| {
             let tmp = format!(
-                "\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};\\\\x{};\\\\x{}\n",
+                "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};\\\\x{};\\\\x{}\n",
+                index,
                 hex::encode(&t.txid),
                 t.tx_type,
                 hex::encode(&b.hash),
@@ -141,6 +144,7 @@ pub fn save_blocks(
                 hex::encode(&t.r),
                 hex::encode(&t.s),
             );
+            index += 1;
 
             // if "to" adddress is empty, calculates the transaction address
             if t.to.is_empty() {
