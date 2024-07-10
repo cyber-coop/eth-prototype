@@ -145,7 +145,7 @@ make run network=ethereum_mainnet
 
 ## Side notes
 
-The databases tables are created as UNLOGGED tables by default, this allows to improve the speed of blocks processing
+The databases tables are created as LOGGED tables by default. You can set them as UNLOGGED to improve the blocks processing speed, but note this could cause unpredicted data losses when interacting with the databases.
 
 ## A little benchmark
 
