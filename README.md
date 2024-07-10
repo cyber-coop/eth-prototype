@@ -1,6 +1,6 @@
 # Ethereum P2P indexer
 
-This project is an indexer for Ethereum and Ethereum forks. It takes advantage of the ETH (Ethereum Wire Protocol) to fetch blocks and transactions through P2P messages. This saves a lot of space and the need to maintain a node to get data. It is also significantly faster than solution that use JSON-RPC.
+This project is an indexer for Ethereum and Ethereum forks. It takes advantage of the ETH (Ethereum Wire Protocol) to fetch blocks and transactions through P2P messages. This saves a lot of space and the need to maintain a node to get data. It is also significantly faster than the solution using JSON-RPC.
 
 In its current state, the indexer takes 48h to index mainnet from scratch.
 
