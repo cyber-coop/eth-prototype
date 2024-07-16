@@ -8,7 +8,6 @@ ANALYZE ethereum_mainnet.ommers;
 
 --- Create Primary and Foreign keys
 ALTER TABLE ethereum_mainnet.blocks ADD CONSTRAINT hash_pk PRIMARY KEY (hash);
-ALTER TABLE ethereum_mainnet.blocks ADD CONSTRAINT number_fk FOREIGN KEY (number);
 ALTER TABLE ethereum_mainnet.transactions ADD CONSTRAINT block_fk FOREIGN KEY (block) REFERENCES ethereum_mainnet.blocks (hash);
 ALTER TABLE ethereum_mainnet.ommers ADD CONSTRAINT phash_pk PRIMARY KEY (hash);
 ALTER TABLE ethereum_mainnet.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (canonical_hash) REFERENCES ethereum_mainnet.blocks (hash);

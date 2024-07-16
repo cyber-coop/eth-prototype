@@ -12,7 +12,6 @@ DELETE FROM ethereum_rinkeby.transactions t USING (SELECT DISTINCT ON (txid) * F
 
 --- Create Primary and Foreign keys
 ALTER TABLE ethereum_rinkeby.blocks ADD CONSTRAINT hash_pk PRIMARY KEY (hash);
-ALTER TABLE ethereum_rinkeby.blocks ADD CONSTRAINT number_fk FOREIGN KEY (number);
 ALTER TABLE ethereum_rinkeby.transactions ADD CONSTRAINT block_fk FOREIGN KEY (block) REFERENCES ethereum_rinkeby.blocks (hash);
 ALTER TABLE ethereum_rinkeby.ommers ADD CONSTRAINT phash_pk PRIMARY KEY (hash);
 ALTER TABLE ethereum_rinkeby.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (canonical_hash) REFERENCES ethereum_rinkeby.blocks (hash);

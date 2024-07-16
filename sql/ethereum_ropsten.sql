@@ -12,7 +12,6 @@ DELETE FROM ethereum_ropsten.transactions t USING (SELECT DISTINCT ON (txid) * F
 
 --- Create Primary and Foreign keys
 ALTER TABLE ethereum_ropsten.blocks ADD CONSTRAINT hash_pk PRIMARY KEY (hash);
-ALTER TABLE ethereum_ropsten.blocks ADD CONSTRAINT number_fk FOREIGN KEY (number);
 ALTER TABLE ethereum_ropsten.transactions ADD CONSTRAINT block_fk FOREIGN KEY (block) REFERENCES ethereum_ropsten.blocks (hash);
 ALTER TABLE ethereum_ropsten.ommers ADD CONSTRAINT phash_pk PRIMARY KEY (hash);
 ALTER TABLE ethereum_ropsten.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (canonical_hash) REFERENCES ethereum_ropsten.blocks (hash);
