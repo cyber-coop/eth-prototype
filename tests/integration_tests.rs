@@ -1,10 +1,10 @@
 use aes::cipher::KeyIvInit;
 use devp2p::{ecies::ECIES, util::pk2id};
+use eth_prototype::database;
 use eth_prototype::{mac, message, utils};
 use log::info;
 use secp256k1_20::{PublicKey, SecretKey, SECP256K1};
 use sha3::{Digest, Keccak256};
-use eth_prototype::database;
 
 #[test]
 fn communicate() {
