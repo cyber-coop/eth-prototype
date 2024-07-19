@@ -4,6 +4,7 @@ use eth_prototype::{mac, message, utils};
 use log::info;
 use secp256k1_20::{PublicKey, SecretKey, SECP256K1};
 use sha3::{Digest, Keccak256};
+use eth_prototype::database;
 
 #[test]
 fn communicate() {
@@ -170,6 +171,6 @@ fn test_open_exec_sql_file() {
     let mut postgres_client = postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
 
     info!("Connected to database");
-
+    database::create_tables(&"test".to_string(), &mut postgres_client);
     utils::open_exec_sql_file(&"test".to_string(), &mut postgres_client);
 }

@@ -7,7 +7,6 @@ ANALYZE ethereum_goerli.transactions;
 
 --- Create Primary key and Foreign key
 ALTER TABLE ethereum_goerli.blocks ADD CONSTRAINT hash_pk PRIMARY KEY (hash);
-ALTER TABLE ethereum_goerli.transactions ADD CONSTRAINT txid_pk PRIMARY KEY (txid);
 ALTER TABLE ethereum_goerli.transactions ADD CONSTRAINT block_fk FOREIGN KEY(block) REFERENCES ethereum_goerli.blocks(hash);
 
 --- Create Index
