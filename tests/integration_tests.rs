@@ -2,13 +2,8 @@ use aes::cipher::KeyIvInit;
 use devp2p::{ecies::ECIES, util::pk2id};
 use eth_prototype::{mac, message, utils};
 use log::info;
-use log::warn;
 use secp256k1_20::{PublicKey, SecretKey, SECP256K1};
 use sha3::{Digest, Keccak256};
-use std::fs::File;
-use std::io::Read;
-use std::thread;
-use std::time::Duration;
 
 #[test]
 fn communicate() {
@@ -170,28 +165,11 @@ fn communicate2() {
 }
 
 #[test]
-fn open_exec_sql_file() {
-    let mut postgres_client: postgres::Client;
+fn test_open_exec_sql_file() {
     let database_params = "host=localhost user=postgres password=wow dbname=blockchains";
+    let mut postgres_client = postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
 
-    loop {
-        let result = postgres::Client::connect(&database_params, postgres::NoTls);
-
-        match result {
-            Ok(client) => {
-                postgres_client = client;
-                break;
-            }
-            Err(_) => {
-                warn!("Fail to connect to database. Retrying in 20 seconds...");
-                thread::sleep(Duration::from_secs(20));
-            }
-        }
-    }
     info!("Connected to database");
 
-    let mut f = File::open("test.sql").expect("Failed opening file");
-    let mut contents = String::new();
-    let _ = f.read_to_string(&mut contents);
-    postgres_client.batch_execute(&contents).unwrap();
+    utils::open_exec_sql_file(&"test".to_string(), &mut postgres_client);
 }

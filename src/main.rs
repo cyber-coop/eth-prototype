@@ -2,7 +2,6 @@ use byteorder::{BigEndian, ReadBytesExt};
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
-use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
 use std::net::TcpStream;
@@ -287,11 +286,7 @@ fn main() {
             if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
                 info!("We are synced !");
                 // Open, read and execute SQL scripts at the end of sync
-                let mut f =
-                    File::open(format!("sql/{}.sql", network_arg)).expect("Failed opening file");
-                let mut contents = String::new();
-                let _ = f.read_to_string(&mut contents);
-                postgres_client.batch_execute(&contents).unwrap();
+                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
                 break;
             }
         }

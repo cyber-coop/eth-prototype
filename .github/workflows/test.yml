@@ -20,6 +20,15 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:12
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: wow
+          POSTGRES_DB: blockchains
+        ports:
+          - 5432:5432
     steps:
     - name: Checkout Repo 
       uses: actions/checkout@v3
