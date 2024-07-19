@@ -2,10 +2,12 @@ use aes::cipher::{KeyIvInit, StreamCipher};
 use byteorder::ByteOrder;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use hmac_sha256::{Hash, HMAC};
+use postgres::Client;
 use rand_core::{OsRng, RngCore};
 use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
+use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -414,6 +416,13 @@ pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
     let contract_address = &contract_address_long[12..];
 
     return contract_address.to_vec();
+}
+
+pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
+    let mut f = File::open(format!("sql/{}.sql", network_arg)).expect("Failed opening file");
+    let mut contents = String::new();
+    let _ = f.read_to_string(&mut contents);
+    postgres_client.batch_execute(&contents).unwrap();
 }
 
 #[cfg(test)]

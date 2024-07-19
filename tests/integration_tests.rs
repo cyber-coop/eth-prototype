@@ -1,6 +1,8 @@
 use aes::cipher::KeyIvInit;
 use devp2p::{ecies::ECIES, util::pk2id};
+use eth_prototype::database;
 use eth_prototype::{mac, message, utils};
+use log::info;
 use secp256k1_20::{PublicKey, SecretKey, SECP256K1};
 use sha3::{Digest, Keccak256};
 
@@ -161,4 +163,14 @@ fn communicate2() {
     let mut header = server_ecies.create_header(server_to_client_data.len());
     assert_eq!(header.len(), ECIES::header_len());
     client_ecies.read_header(&mut *header).unwrap();
+}
+
+#[test]
+fn test_open_exec_sql_file() {
+    let database_params = "host=localhost user=postgres password=wow dbname=blockchains";
+    let mut postgres_client = postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
+
+    info!("Connected to database");
+    database::create_tables(&"test".to_string(), &mut postgres_client);
+    utils::open_exec_sql_file(&"test".to_string(), &mut postgres_client);
 }

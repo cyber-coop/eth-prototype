@@ -6,10 +6,6 @@ ANALYZE ethereum_ropsten.blocks;
 ANALYZE ethereum_ropsten.transactions;
 ANALYZE ethereum_ropsten.ommers;
 
--- Ropsten have duplicates that we need to remove...
-CREATE TABLE ethereum_ropsten.tx_dup AS SELECT s.txid, s.block FROM ethereum_ropsten.transactions s JOIN (SELECT txid, count(*) FROM ethereum_ropsten.transactions GROUP BY txid HAVING COUNT(*) > 1) d ON s.txid = d.txid ORDER BY s.txid;
-DELETE FROM ethereum_ropsten.transactions t USING (SELECT DISTINCT ON (txid) * FROM ethereum_ropsten.tx_dup) dup WHERE t.txid = dup.txid AND t.block = dup.block;
-
 --- Create Primary and Foreign keys
 ALTER TABLE ethereum_ropsten.blocks ADD CONSTRAINT hash_pk PRIMARY KEY (hash);
 ALTER TABLE ethereum_ropsten.transactions ADD CONSTRAINT block_fk FOREIGN KEY (block) REFERENCES ethereum_ropsten.blocks (hash);
