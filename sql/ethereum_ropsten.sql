@@ -16,4 +16,5 @@ ALTER TABLE ethereum_ropsten.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (c
 ---- We use B-Tree indexing because we want to do more inserts of new transactions later and it is supposedly faster 
 CREATE INDEX i_blocknumber ON ethereum_ropsten.blocks using btree (number);
 CREATE INDEX i_txid ON ethereum_ropsten.transactions using btree (txid);
+CREATE INDEX i_txid ON ethereum_ropsten.transactions using btree (block);
 CREATE INDEX i_ommerphash ON ethereum_ropsten.ommers using btree (canonical_hash);
