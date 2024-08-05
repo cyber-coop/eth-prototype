@@ -208,8 +208,6 @@ fn main() {
         }
     }
 
-
-
     /******************
      *
      *  Create Hello
@@ -269,9 +267,13 @@ fn main() {
      ******************/
     if network_arg == "binance_mainnet" {
         let upgrade_status = eth::create_upgrade_status_message();
-        utils::send_message(upgrade_status, &mut stream, &mut egress_mac, &mut egress_aes);    
+        utils::send_message(
+            upgrade_status,
+            &mut stream,
+            &mut egress_mac,
+            &mut egress_aes,
+        );
     }
-
 
     /********************
      *
@@ -348,7 +350,10 @@ fn main() {
             if uncrypted_body[0] - 16 == 11 {
                 let mut dec = snap::raw::Decoder::new();
                 let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
-                info!("upgrade status message received (only binance) : {}", hex::encode(&message));
+                info!(
+                    "upgrade status message received (only binance) : {}",
+                    hex::encode(&message)
+                );
             }
 
             if uncrypted_body[0] - 16 == 3 {
