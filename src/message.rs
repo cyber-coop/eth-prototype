@@ -324,11 +324,12 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 .unwrap()
                 .iter()
                 .map(|h| {
-                    let h = rlp::Rlp::new(&h);
-                    assert!(h.is_list());
+                    // See https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L43
+                    // let h = rlp::Rlp::new(&h);
+                    // assert!(h.is_list());
 
-                    let hash: Vec<u8> = h.as_val().unwrap();
-                    Hash(hash)
+                    // let hash: Vec<u8> = h.as_val().unwrap();
+                    Hash(h.to_owned())
                 })
                 .collect();
             let v: u64 = t.at(11).unwrap().as_val().unwrap();
