@@ -97,7 +97,7 @@ pub struct Transaction {
     pub value: BigUint,
     pub data: Vec<u8>,
     pub access_list: Option<AccessList>, // Introduce in type 2 transactions
-    pub max_fee_per_blob_gas: Option<u32>, // Introduce in type 3 transactions
+    pub max_fee_per_blob_gas: Option<u64>, // Introduce in type 3 transactions
     pub blob_versioned_hashes: Option<Vec<Hash>>, // Introduce in type 3 transactions
     pub v: u64,
     pub r: Vec<u8>,

@@ -45,7 +45,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         value NUMERIC(78) NOT NULL,
         data BYTEA NOT NULL,
         access_list JSONB,
-        max_fee_per_blob_gas INTEGER,
+        max_fee_per_blob_gas BIGINT,
         blob_versioned_hashes JSONB,
         v BIGINT NOT NULL,
         r BYTEA NOT NULL,
