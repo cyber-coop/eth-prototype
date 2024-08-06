@@ -270,11 +270,9 @@ fn main() {
         );
     }
 
-
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         current_hash = their_current_hash;
-
 
         /******************
          *
@@ -309,7 +307,6 @@ fn main() {
 
         // update block hash
         current_hash = block_headers.last().unwrap().parent_hash.to_vec();
-
     }
 
     /********************
