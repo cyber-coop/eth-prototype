@@ -45,14 +45,16 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
+    dbg!(hex::encode(&message));
+
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
 
-    // let version: u16 = r.at(0).unwrap().as_val().unwrap();
-    // let network_id: u16  = r.at(1).unwrap().as_val().unwrap();
+    let _version: u16 = r.at(0).unwrap().as_val().unwrap();
+    let _network_id: u16 = r.at(1).unwrap().as_val().unwrap();
     // let td: u16 = r.at(2).unwrap().as_val().unwrap();
     let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
-    // let genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
+    let _genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
 
     return blockhash;
 }
@@ -268,4 +270,42 @@ pub fn util_parse_block_header(payload: Vec<u8>) -> Block {
         basefee_per_gas,
         withdrawals_root,
     };
+}
+
+// This is for Binance only
+// This is the upgrade status message (0x0b)
+// https://github.com/bnb-chain/bsc/blob/v1.2.10/eth/protocols/eth/handshake.go#L71
+pub fn create_upgrade_status_message() -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
+    s.begin_list(1);
+    s.begin_list(1);
+
+    s.append_empty_data();
+
+    let payload = s.as_raw();
+    let code: Vec<u8> = vec![0x0b + BASE_PROTOCOL_OFFSET];
+
+    let mut enc = snap::raw::Encoder::new();
+    let payload_compressed = enc.compress_vec(&payload).unwrap();
+
+    return [code.to_vec(), payload_compressed].concat();
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocols::constants::BASE_PROTOCOL_OFFSET;
+
+    use super::create_upgrade_status_message;
+
+    #[test]
+    fn test_create_upgrade_status_message() {
+        let payload = create_upgrade_status_message();
+
+        assert_eq!(payload[0] - BASE_PROTOCOL_OFFSET, 0x0b);
+
+        let mut dec = snap::raw::Decoder::new();
+        let message = dec.decompress_vec(&payload[1..].to_vec()).unwrap();
+
+        assert_eq!(hex::encode(&message), "c2c180");
+    }
 }

@@ -316,7 +316,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 access_list.0.push((Hash(key), list));
             }
             assert_eq!(access_list.0.len(), tmp.item_count().unwrap());
-            let max_fee_per_blob_gas: u32 = t.at(9).unwrap().as_val().unwrap();
+            let max_fee_per_blob_gas: u32 = t.at(9).unwrap().as_val().unwrap(); // This is UINT256 https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L42
             let blob_versioned_hashes: Vec<Hash> = t
                 .at(10)
                 .unwrap()
@@ -324,11 +324,12 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 .unwrap()
                 .iter()
                 .map(|h| {
-                    let h = rlp::Rlp::new(&h);
-                    assert!(h.is_list());
+                    // See https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L43
+                    // let h = rlp::Rlp::new(&h);
+                    // assert!(h.is_list());
 
-                    let hash: Vec<u8> = h.as_val().unwrap();
-                    Hash(hash)
+                    // let hash: Vec<u8> = h.as_val().unwrap();
+                    Hash(h.to_owned())
                 })
                 .collect();
             let v: u64 = t.at(11).unwrap().as_val().unwrap();

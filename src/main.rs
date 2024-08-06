@@ -188,15 +188,15 @@ fn main() {
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
 
     if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message");
-        trace!("Disconnect message : {}", hex::encode(&uncrypted_body));
+        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
         process::exit(1);
     }
 
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
     let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
-    dbg!(&hello_message);
+
+    info!("{:#?}", &hello_message);
 
     // We need to find the highest eth version it supports
     let mut version = 0;
@@ -250,8 +250,7 @@ fn main() {
     info!("Handling STATUS message");
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message");
-        trace!("Disconnect message : {}", hex::encode(&uncrypted_body));
+        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
         process::exit(1);
     }
     let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
@@ -259,6 +258,21 @@ fn main() {
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         current_hash = their_current_hash;
+    }
+
+    /******************
+     *
+     *  Send UPGRADE STATUS message (binance only)
+     *
+     ******************/
+    if network_arg == "binance_mainnet" {
+        let upgrade_status = eth::create_upgrade_status_message();
+        utils::send_message(
+            upgrade_status,
+            &mut stream,
+            &mut egress_mac,
+            &mut egress_aes,
+        );
     }
 
     /********************
@@ -331,6 +345,15 @@ fn main() {
                     );
                 }
                 continue;
+            }
+
+            if uncrypted_body[0] - 16 == 11 {
+                let mut dec = snap::raw::Decoder::new();
+                let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
+                info!(
+                    "upgrade status message received (only binance) : {}",
+                    hex::encode(&message)
+                );
             }
 
             if uncrypted_body[0] - 16 == 3 {
