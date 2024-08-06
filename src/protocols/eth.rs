@@ -45,8 +45,6 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
-    dbg!(hex::encode(&message));
-
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
 

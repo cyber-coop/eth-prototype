@@ -174,6 +174,12 @@ Blocks per second: 13 (average)
 
 Blocks per second: 128 (average)
 
+## Troubleshooting
+
+### Erigon 2.58 node incomplete block body
+
+When connecting to an erigon node it seems there is some issue with devp2p for version `erigon/v2.58.2-125509e4/linux-amd64/go1.22.1`. It provides us with an incomplete block body message. The missing bytes lead to Rlp decoding error.
+
 ## License
 
 Do What The Fuck You Want To Public License
