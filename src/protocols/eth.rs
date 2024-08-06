@@ -45,8 +45,6 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
-    dbg!(hex::encode(&message));
-
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
 
@@ -142,6 +140,7 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
     for i in 0..count {
         let block_header = block_headers.at(i).unwrap().as_raw();
         let block = util_parse_block_header(block_header.to_vec());
+
         headers.push(block);
     }
 

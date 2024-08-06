@@ -383,14 +383,15 @@ pub fn read_message(
 
     // we have this loop to be sure we have received the complete payload
     while body.len() < body_size {
-        // trace!(
-        //     "Incomplete message body waiting for the rest... ({})",
-        //     body.len()
-        // );
         let mut buf: Vec<u8> = vec![0; body_size - body.len()];
         let l = stream.read(&mut buf).unwrap();
 
         body.extend(&buf[0..l]);
+        trace!(
+            "Incomplete message body waiting for the rest... ({}/{})",
+            body.len(),
+            body_size,
+        );
         thread::sleep(Duration::from_millis(READ_MESSAGE_TIME_MS));
     }
 
