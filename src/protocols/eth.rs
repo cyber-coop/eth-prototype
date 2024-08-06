@@ -142,6 +142,7 @@ pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
     for i in 0..count {
         let block_header = block_headers.at(i).unwrap().as_raw();
         let block = util_parse_block_header(block_header.to_vec());
+        
         headers.push(block);
     }
 
@@ -187,7 +188,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
     for i in 0..count {
         let block_body = block_bodies.at(i).unwrap();
         assert!(block_body.is_list());
-
+        
         let transactions = block_body.at(0).unwrap();
         let count_tx = transactions.item_count().unwrap();
         let ommers = block_body.at(1).unwrap();
