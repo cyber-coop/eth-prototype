@@ -316,7 +316,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 access_list.0.push((Hash(key), list));
             }
             assert_eq!(access_list.0.len(), tmp.item_count().unwrap());
-            let max_fee_per_blob_gas: u32 = t.at(9).unwrap().as_val().unwrap(); // This is UINT256 https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L42
+            let max_fee_per_blob_gas: u64 = t.at(9).unwrap().as_val().unwrap(); // This is UINT256 https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L42 but putting u64 for now. Hoping it doesn't overflow.
             let blob_versioned_hashes: Vec<Hash> = t
                 .at(10)
                 .unwrap()
