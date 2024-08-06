@@ -38,7 +38,7 @@ impl Network {
             158, 177, 213, 24, 150, 158, 171, 82, 157, 217, 184, 140, 26,
         ],
         head_td: 10790000,
-        fork_id: [0xf9843abf, 0],
+        fork_id: [0x70cc14e2, 0],
         network_id: 0x05,
     };
 
@@ -60,7 +60,7 @@ impl Network {
             24, 208, 144, 106, 52, 230, 154, 236, 140, 13, 177, 203, 143, 163,
         ],
         head_td: 0,
-        fork_id: [0xdce96c2d, 0],
+        fork_id: [0x9f3d2254, 0],
         network_id: 1,
     };
 
