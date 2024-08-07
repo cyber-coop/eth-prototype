@@ -378,6 +378,15 @@ fn main() {
                         &thread_egress_aes,
                     );
                 }
+
+                if code == 1 {
+                    // Received a disconnect message
+                    let mut dec = snap::raw::Decoder::new();
+                    let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
+
+                    panic!("Disconnected ! {}", hex::encode(&message))
+                }
+
                 continue;
             }
 
