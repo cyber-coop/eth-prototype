@@ -18,7 +18,7 @@ use super::mac;
 
 pub type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
 pub type Aes256Ctr64BE = ctr::Ctr64BE<aes::Aes256>;
-const READ_MESSAGE_TIME_MS: u64 = 100;
+const READ_MESSAGE_TIME_MS: u64 = 5;
 
 pub fn get_sig(r: &[u8], s: &[u8]) -> Vec<u8> {
     let mut sig: Vec<u8> = vec![0; 64];
@@ -387,12 +387,14 @@ pub fn read_message(
         let l = stream.read(&mut buf).unwrap();
 
         body.extend(&buf[0..l]);
-        trace!(
-            "Incomplete message body waiting for the rest... ({}/{})",
-            body.len(),
-            body_size,
-        );
-        thread::sleep(Duration::from_millis(READ_MESSAGE_TIME_MS));
+        if body.len() < body_size {
+            trace!(
+                "Incomplete message body waiting for the rest... ({}/{})",
+                body.len(),
+                body_size,
+            );
+            thread::sleep(Duration::from_millis(READ_MESSAGE_TIME_MS));
+        }
     }
 
     assert_eq!(body.len(), body_size);
