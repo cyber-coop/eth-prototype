@@ -395,7 +395,6 @@ pub fn read_message(
             );
             thread::sleep(Duration::from_millis(READ_MESSAGE_TIME_MS));
         }
-
     }
 
     assert_eq!(body.len(), body_size);
