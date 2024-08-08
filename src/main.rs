@@ -303,7 +303,6 @@ fn main() {
             } else {
                 dbg!(hex::encode(uncrypted_body));
             }
-
         }
 
         assert_eq!(code, 4);
