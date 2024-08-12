@@ -53,6 +53,17 @@ impl Network {
         network_id: 0xaa36a7,
     };
 
+    // Ethereum Holesky
+    pub const ETHEREUM_HOLESKY: Network = Network {
+        genesis_hash: [
+            181, 247, 249, 18, 68, 60, 148, 15, 33, 253, 97, 31, 18, 130, 141, 117, 181, 52, 54,
+            78, 217, 233, 92, 164, 227, 7, 114, 154, 70, 97, 189, 228,
+        ],
+        head_td: 1,
+        fork_id: [0x9b192ad0, 0],
+        network_id: 0x4268,
+    };
+
     // Ethereum Mainnet
     pub const ETHEREUM_MAINNET: Network = Network {
         genesis_hash: [
@@ -81,6 +92,7 @@ impl Network {
             "ethereum_rinkeby" => Ok(Self::ETHEREUM_RINKEBY),
             "ethereum_goerli" => Ok(Self::ETHEREUM_GOERLI),
             "ethereum_sepolia" => Ok(Self::ETHEREUM_SEPOLIA),
+            "ethereum_holesky" => Ok(Self::ETHEREUM_HOLESKY),
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
             _ => Err("not matching available networks.".into()),
