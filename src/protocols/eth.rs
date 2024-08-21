@@ -170,7 +170,9 @@ pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
+pub fn parse_block_bodies(
+    payload: Vec<u8>,
+) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 

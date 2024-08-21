@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use eth_prototype::protocols::eth;
-use eth_prototype::types::{Block, Transaction};
+use eth_prototype::types::{Block, Transaction, Withdrawal};
 use eth_prototype::{configs, message, networks, types, utils};
 
 const BLOCK_NUM: usize = 1024;
@@ -256,7 +256,7 @@ fn main() {
         .map(|b| b.hash.clone())
         .collect::<Vec<Vec<u8>>>();
 
-    let mut transactions: Vec<(Vec<Transaction>, Vec<Block>)> = vec![];
+    let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
 
     while transactions.len() < BLOCK_NUM {
         let get_blocks_bodies =

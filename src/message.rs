@@ -1,7 +1,7 @@
+use crate::types::Withdrawal;
 use crate::types::{AccessList, Hash};
 use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
 use crate::utils;
-use crate::types::Withdrawal;
 use arrayvec::ArrayString;
 use num::BigUint;
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
@@ -410,12 +410,12 @@ pub fn util_parse_withdrawal(payload: Vec<u8>) -> Withdrawal {
     let validator_index: u64 = wd.at(1).unwrap().as_val().unwrap();
     let address: Vec<u8> = wd.at(2).unwrap().as_val().unwrap();
     let amount: u64 = wd.at(3).unwrap().as_val().unwrap();
-    return Withdrawal{
+    return Withdrawal {
         index,
         validator_index,
         address,
         amount,
-    }
+    };
 }
 
 pub fn create_hello_message(private_key: &Vec<u8>) -> Vec<u8> {

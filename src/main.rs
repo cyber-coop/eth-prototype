@@ -332,7 +332,8 @@ fn main() {
 
         // while recv save blocks in database
         loop {
-            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = rx.recv().unwrap();
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                rx.recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -515,9 +516,16 @@ fn main() {
 
         let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
         let t_iter = transactions.iter();
-        t_iter.enumerate().for_each(|(i, (txs, ommers, withdrawals))| {
-            blocks.push((block_headers[i].clone(), txs.to_vec(), ommers.to_vec(), withdrawals.to_vec()));
-        });
+        t_iter
+            .enumerate()
+            .for_each(|(i, (txs, ommers, withdrawals))| {
+                blocks.push((
+                    block_headers[i].clone(),
+                    txs.to_vec(),
+                    ommers.to_vec(),
+                    withdrawals.to_vec(),
+                ));
+            });
 
         let current_height = blocks.last().unwrap().0.number;
         info!("Blocks n° {}", current_height);

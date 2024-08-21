@@ -206,7 +206,7 @@ pub fn save_blocks(
             withdrawals_string.push_str(&tmp);
         });
     });
-    
+
     transactions_strings.push(transactions_string.clone());
 
     info!("Finished formating blocks and transactions message");
@@ -234,9 +234,17 @@ pub fn save_blocks(
     ommers_writer.finish().unwrap();
 
     let mut withdrawals_writer = transaction
-    .copy_in(format!("COPY {}.withdrawals FROM stdin (DELIMITER ';')", schema_name).as_str())
-    .unwrap();
-    withdrawals_writer.write_all(withdrawals_string.as_bytes()).unwrap();
+        .copy_in(
+            format!(
+                "COPY {}.withdrawals FROM stdin (DELIMITER ';')",
+                schema_name
+            )
+            .as_str(),
+        )
+        .unwrap();
+    withdrawals_writer
+        .write_all(withdrawals_string.as_bytes())
+        .unwrap();
     withdrawals_writer.finish().unwrap();
 
     let mut chunk_index = 0;
