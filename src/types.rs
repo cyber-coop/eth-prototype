@@ -132,6 +132,14 @@ pub struct Block {
     pub withdrawals_root: Vec<u8>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Withdrawal {
+    pub index: u64,
+    pub validator_index: u64,
+    pub address: Vec<u8>,
+    pub amount: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::HelloMessage;

@@ -1,8 +1,8 @@
 use sha3::{Digest, Keccak256};
 
 use super::constants::BASE_PROTOCOL_OFFSET;
-use crate::message::parse_transaction;
-use crate::types::{Block, Transaction};
+use crate::message::{parse_transaction, util_parse_withdrawal};
+use crate::types::{Block, Transaction, Withdrawal};
 
 // Create status message following the ETH protocol
 pub fn create_status_message(
@@ -170,7 +170,7 @@ pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>)> {
+pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
@@ -180,7 +180,7 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
     // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
     let block_bodies = r.at(1).unwrap();
 
-    let mut result: Vec<(Vec<Transaction>, Vec<Block>)> = vec![];
+    let mut result: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
 
     let count = block_bodies.item_count().unwrap();
     for i in 0..count {
@@ -191,11 +191,14 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
         let count_tx = transactions.item_count().unwrap();
         let ommers = block_body.at(1).unwrap();
         let count_om = ommers.item_count().unwrap();
+        let withdrawals = block_body.at(2).unwrap();
+        let count_wd = withdrawals.item_count().unwrap();
 
         trace!("Transactions count : {}", count_tx);
 
         let mut result_transactions: Vec<Transaction> = vec![];
         let mut result_ommers: Vec<Block> = vec![];
+        let mut result_withdrawals: Vec<Withdrawal> = vec![];
 
         for j in 0..count_tx {
             let transaction = transactions.at(j).unwrap();
@@ -209,7 +212,13 @@ pub fn parse_block_bodies(payload: Vec<u8>) -> Vec<(Vec<Transaction>, Vec<Block>
             result_ommers.push(om);
         }
 
-        result.push((result_transactions, result_ommers));
+        for l in 0..count_wd {
+            let withdrawal = withdrawals.at(l).unwrap();
+            let wd = util_parse_withdrawal(withdrawal.as_raw().to_vec());
+            result_withdrawals.push(wd);
+        }
+
+        result.push((result_transactions, result_ommers, result_withdrawals));
     }
 
     return result;
