@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 use eth_prototype::protocols::eth;
-use eth_prototype::types::{Block, Transaction};
+use eth_prototype::types::{Block, Transaction, Withdrawal};
 use eth_prototype::{configs, database, message, networks, types, utils};
 
 #[macro_use]
@@ -332,7 +332,8 @@ fn main() {
 
         // while recv save blocks in database
         loop {
-            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = rx.recv().unwrap();
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                rx.recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -475,7 +476,7 @@ fn main() {
             .map(|b| b.hash.clone())
             .collect::<Vec<Vec<u8>>>();
 
-        let mut transactions: Vec<(Vec<Transaction>, Vec<Block>)> = vec![];
+        let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
 
         while transactions.len() < hashes.len() {
             let get_blocks_bodies =
@@ -513,11 +514,18 @@ fn main() {
             transactions.extend(tmp_txs);
         }
 
-        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>)> = vec![];
+        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
         let t_iter = transactions.iter();
-        t_iter.enumerate().for_each(|(i, (txs, ommers))| {
-            blocks.push((block_headers[i].clone(), txs.to_vec(), ommers.to_vec()));
-        });
+        t_iter
+            .enumerate()
+            .for_each(|(i, (txs, ommers, withdrawals))| {
+                blocks.push((
+                    block_headers[i].clone(),
+                    txs.to_vec(),
+                    ommers.to_vec(),
+                    withdrawals.to_vec(),
+                ));
+            });
 
         let current_height = blocks.last().unwrap().0.number;
         info!("Blocks n° {}", current_height);

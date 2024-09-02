@@ -2,7 +2,7 @@ use postgres::Client;
 use std::io::prelude::*;
 use std::time::Instant;
 
-use crate::types::{Block, Transaction};
+use crate::types::{Block, Transaction, Withdrawal};
 use crate::utils;
 
 // TODO: comment the column name
@@ -74,6 +74,13 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         basefee_per_gas BIGINT NOT NULL,
         withdrawals_root BYTEA NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS {schema_name}.withdrawals (
+        block_hash BYTEA NOT NULL,
+        index BIGINT NOT NULL,
+        validator_index BIGINT NOT NULL,
+        address BYTEA NOT NULL,
+        amount BIGINT NOT NULL
+    );
     "
     );
 
@@ -81,7 +88,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
 }
 
 pub fn save_blocks(
-    blocks: &Vec<(Block, Vec<Transaction>, Vec<Block>)>,
+    blocks: &Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>,
     schema_name: &String,
     postgres_client: &mut Client,
 ) {
@@ -90,12 +97,13 @@ pub fn save_blocks(
     let mut blocks_string: String = String::new();
     let mut transactions_string: String = String::new();
     let mut ommers_string: String = String::new();
+    let mut withdrawals_string: String = String::new();
     // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
     let mut transactions_strings: Vec<String> = vec![];
     let mut contracts_string: String = String::new();
 
     info!("starting to format blocks and transactions");
-    blocks.iter().for_each(|(b, txs, ommers)| {
+    blocks.iter().for_each(|(b, txs, ommers, withdrawals)| {
         let tmp = format!(
             "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
             hex::encode(&b.hash),
@@ -163,7 +171,6 @@ pub fn save_blocks(
             }
             transactions_string.push_str(&tmp);
         });
-        //TODO: add ommers
         ommers.iter().for_each(|om| {
             let tmp = format!(
                 "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
@@ -187,7 +194,19 @@ pub fn save_blocks(
             );
             ommers_string.push_str(&tmp);
         });
+        withdrawals.iter().for_each(|wd| {
+            let tmp = format!(
+                "\\\\x{};{};{};\\\\x{};{}\n", // Important! We don't end with a ';'
+                hex::encode(&b.hash),
+                wd.index,
+                wd.validator_index,
+                hex::encode(&wd.address),
+                wd.amount,
+            );
+            withdrawals_string.push_str(&tmp);
+        });
     });
+
     transactions_strings.push(transactions_string.clone());
 
     info!("Finished formating blocks and transactions message");
@@ -213,6 +232,20 @@ pub fn save_blocks(
         .unwrap();
     ommers_writer.write_all(ommers_string.as_bytes()).unwrap();
     ommers_writer.finish().unwrap();
+
+    let mut withdrawals_writer = transaction
+        .copy_in(
+            format!(
+                "COPY {}.withdrawals FROM stdin (DELIMITER ';')",
+                schema_name
+            )
+            .as_str(),
+        )
+        .unwrap();
+    withdrawals_writer
+        .write_all(withdrawals_string.as_bytes())
+        .unwrap();
+    withdrawals_writer.finish().unwrap();
 
     let mut chunk_index = 0;
     let number_of_chunks = transactions_strings.len();
