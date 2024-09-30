@@ -300,15 +300,12 @@ fn main() {
                 if code == 4 {
                     break;
                 }
-            } else {
-                dbg!(hex::encode(uncrypted_body));
             }
         }
 
         assert_eq!(code, 4);
 
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
-        dbg!(&block_headers.last().unwrap().number);
 
         // update block hash
         current_hash = block_headers.last().unwrap().parent_hash.to_vec();

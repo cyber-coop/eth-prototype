@@ -1,3 +1,4 @@
+use rlp::Rlp;
 use sha3::{Digest, Keccak256};
 
 use super::constants::BASE_PROTOCOL_OFFSET;
@@ -179,6 +180,9 @@ pub fn parse_block_bodies(
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
 
+    // empty list used for backward compatibility with withdrawals (pre-merge network)
+    let empty_list_bytes = vec![0xc0];
+
     // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
     let block_bodies = r.at(1).unwrap();
 
@@ -193,7 +197,7 @@ pub fn parse_block_bodies(
         let count_tx = transactions.item_count().unwrap();
         let ommers = block_body.at(1).unwrap();
         let count_om = ommers.item_count().unwrap();
-        let withdrawals = block_body.at(2).unwrap();
+        let withdrawals = block_body.at(2).unwrap_or(rlp::Rlp::new(&empty_list_bytes)); // for backward compatibility (like when you are indexing pre-merge)
         let count_wd = withdrawals.item_count().unwrap();
 
         trace!("Transactions count : {}", count_tx);
