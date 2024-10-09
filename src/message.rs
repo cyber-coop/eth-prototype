@@ -48,8 +48,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             rlps.append_raw(transaction.at(n).unwrap().as_raw(), 1);
         }
         if v > 28 {
-            // TODO: This is not right...
-            let chain_id = v / 2;
+            let chain_id = (v - 35) / 2;
 
             rlps.append(&chain_id);
             rlps.append(&0_u8);
@@ -61,7 +60,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
         hasher.update(&rlps.as_raw());
         let digest = hasher.finalize();
 
-        // Get public key here and therefore address
+        // Get public key here and therefore the from address
         let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
         let recid = match v {
             0 | 1 | 2 | 3 => RecoveryId::from_i32(v as i32).unwrap(),
