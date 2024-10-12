@@ -48,8 +48,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             rlps.append_raw(transaction.at(n).unwrap().as_raw(), 1);
         }
         if v > 28 {
-            // TODO: This is not right...
-            let chain_id = v / 2;
+            let chain_id = (v - 35) / 2;
 
             rlps.append(&chain_id);
             rlps.append(&0_u8);
@@ -61,7 +60,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
         hasher.update(&rlps.as_raw());
         let digest = hasher.finalize();
 
-        // Get public key here and therefore address
+        // Get public key here and therefore the from address
         let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
         let recid = match v {
             0 | 1 | 2 | 3 => RecoveryId::from_i32(v as i32).unwrap(),
@@ -534,6 +533,39 @@ mod tests {
         assert_eq!(
             "ed382cb554ad10e94921d263a56c670669d6c380bbdacdbf96fed625b7132a1d",
             hex::encode(&t.txid)
+        );
+    }
+
+    #[test]
+    fn test_from_address() {
+        let tx_payload = hex::decode("b87502f87201398402faf08085033cf428ba82520894316fb96cbe2fb52dbe679d75b928fcfad858241b8790fdf35cc2441080c080a05074184cc7587438190c79c64c87607527c9c9e51274d16dc5696591fadd9cb0a022a8623f1eb4a62fc588ce9be9f4f41ae851a117f4ff4c5066c0adef9af973be").unwrap();
+
+        let t = parse_transaction(tx_payload);
+        assert_eq!(
+            "14a6dac3a5a4653a613310a66914766cd5c06641",
+            hex::encode(&t.from)
+        );
+    }
+
+    #[test]
+    fn test_from_address_2() {
+        let tx_payload = hex::decode("f86c098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a76400008025a028ef61340bd939bc2195fe537567866003e1a15d3c71ff63e1590620aa636276a067cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83").unwrap();
+
+        let t = parse_transaction(tx_payload);
+        assert_eq!(
+            "9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            hex::encode(&t.from)
+        );
+    }
+
+    #[test]
+    fn test_from_address_3() {
+        let tx_payload = hex::decode("f86c098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a76400008026a019ae791bb8378a38bb83f5b930fe78a0320cec27d86e5e258c69f0fa9541eb8da02bd8e0c5bde4c0800238ce5a59d2f3ce723f1e84a62cab53d961fe3b019d19fc").unwrap();
+
+        let t = parse_transaction(tx_payload);
+        assert_eq!(
+            "3ef073ccc179364773bcd336b24767e7a2759c25",
+            hex::encode(&t.from)
         );
     }
 }
