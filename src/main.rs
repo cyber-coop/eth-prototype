@@ -4,6 +4,7 @@ use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::io::Read;
+use std::net::Shutdown;
 use std::net::TcpStream;
 use std::process;
 use std::sync::mpsc::{channel, sync_channel};
@@ -11,7 +12,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use std::net::Shutdown;
 use tokio::runtime::Runtime;
 
 use eth_prototype::protocols::eth;
@@ -129,7 +129,7 @@ fn main() {
      *
      ******************/
 
-    let rt  = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     // TODO: not optimal; best to entirely rewrite discv4;
     // fck async y viva synchronous
@@ -332,7 +332,8 @@ fn main() {
                 // peer disconnected so we get the next one
                 continue;
             }
-            let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
+            let (their_current_hash, network_id) =
+                eth::parse_status_message(uncrypted_body[1..].to_vec());
 
             // if not on the same network we disconnect and take the next peer
             // TODO: network_id should be u16 everywhere
