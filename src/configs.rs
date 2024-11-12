@@ -27,7 +27,7 @@ pub struct IndexerConfig {
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub database: DatabaseConfig,
-    pub peer: Peer,
+    pub peer: Option<Peer>,
     pub indexer: IndexerConfig,
 }
 

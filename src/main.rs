@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use std::net::Shutdown;
+use tokio::runtime::Runtime;
 
 use eth_prototype::protocols::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -87,230 +89,6 @@ fn main() {
         info!("We are starting at hash {}", hex::encode(&current_hash));
     }
 
-    /******************
-     *
-     *  Connect to peer
-     *
-     ******************/
-    let mut stream =
-        TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .unwrap();
-    let remote_id = config.peer.remote_id;
-
-    let private_key = SecretKey::new(&mut rand::thread_rng())
-        .secret_bytes()
-        .to_vec();
-    let mut nonce = vec![0; 32];
-    rand::thread_rng().fill_bytes(&mut nonce);
-    let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng())
-        .secret_bytes()
-        .to_vec();
-    let pad = vec![0; 100]; // should be generated randomly but we don't really care
-
-    /******************
-     *
-     *  Create Auth message (EIP8 supported)
-     *
-     ******************/
-    info!("Creating EIP8 Auth message");
-    let init_msg =
-        utils::create_auth_eip8(&remote_id, &private_key, &nonce, &ephemeral_privkey, &pad);
-
-    // send the message
-    info!("Sending EIP8 Auth message");
-    stream.write(&init_msg).unwrap();
-    stream.flush().unwrap();
-
-    info!("waiting for answer...");
-    let mut buf = [0u8; 2];
-    let size = stream.read(&mut buf).unwrap();
-
-    // We should have read some bytes
-    assert_ne!(size, 0);
-
-    let size_expected = buf.as_slice().read_u16::<BigEndian>().unwrap() as usize;
-    let shared_mac_data = &buf[0..2];
-
-    let mut payload = vec![0u8; size_expected.into()];
-    let size = stream.read(&mut payload).unwrap();
-
-    assert_eq!(size, size_expected);
-
-    /******************
-     *
-     *  Handle Ack
-     *
-     ******************/
-
-    info!("ACK message received");
-    let decrypted =
-        utils::decrypt_message(&payload.to_vec(), &shared_mac_data.to_vec(), &private_key);
-
-    // decode RPL data
-    let rlp = rlp::Rlp::new(&decrypted);
-    let mut rlp = rlp.into_iter();
-
-    // id to pubkey
-    let remote_public_key: Vec<u8> = [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
-    let remote_nonce: Vec<u8> = rlp.next().unwrap().as_val().unwrap();
-
-    let ephemeral_shared_secret = utils::ecdh_x(&remote_public_key, &ephemeral_privkey);
-
-    /******************
-     *
-     *  Setup Frame
-     *
-     ******************/
-
-    let remote_data = [shared_mac_data, &payload].concat();
-    let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
-        remote_nonce,
-        nonce,
-        ephemeral_shared_secret,
-        remote_data,
-        init_msg,
-    );
-    let mut egress_aes = Arc::new(Mutex::new(egress_aes));
-    let mut egress_mac = Arc::new(Mutex::new(egress_mac));
-
-    info!("Frame setup done !");
-
-    info!("Received Ack, waiting for Header");
-
-    /******************
-     *
-     *  Handle HELLO
-     *
-     ******************/
-
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
-
-    if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        process::exit(1);
-    }
-
-    // Should be HELLO
-    assert_eq!(0x80, uncrypted_body[0]);
-    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
-
-    info!("{:#?}", &hello_message);
-
-    // We need to find the highest eth version it supports
-    let mut version = 0;
-    for capability in hello_message.capabilities {
-        if capability.name.0.to_string() == "eth" {
-            if capability.version > version {
-                version = capability.version;
-            }
-        }
-    }
-
-    /******************
-     *
-     *  Create Hello
-     *
-     ******************/
-
-    info!("Sending HELLO message");
-    let hello = message::create_hello_message(&private_key);
-    utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes);
-
-    /******************
-     *
-     *  Send STATUS message
-     *
-     ******************/
-
-    info!("Sending STATUS message");
-
-    let genesis_hash = network.genesis_hash.to_vec();
-    let head_td = 0;
-    let fork_id = network.fork_id.to_vec();
-    let network_id = network.network_id;
-
-    let status = eth::create_status_message(
-        &version,
-        &genesis_hash,
-        &genesis_hash,
-        &head_td,
-        &fork_id,
-        &network_id,
-    );
-    utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes);
-
-    /******************
-     *
-     *  Handle STATUS message
-     *
-     ******************/
-
-    info!("Handling STATUS message");
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
-    if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        process::exit(1);
-    }
-    let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
-
-    /******************
-     *
-     *  Send UPGRADE STATUS message (binance only)
-     *
-     ******************/
-    if network_arg == "binance_mainnet" {
-        let upgrade_status = eth::create_upgrade_status_message();
-        utils::send_message(
-            upgrade_status,
-            &mut stream,
-            &mut egress_mac,
-            &mut egress_aes,
-        );
-    }
-
-    // If we do't have blocks in the database we use the best one
-    if current_hash.len() == 0 {
-        current_hash = their_current_hash;
-
-        /******************
-         *
-         *  Get safe block hash (approx 1024 blocks behind the highest)
-         *
-         ******************/
-
-        info!("Get safe block hash");
-        let get_blocks_headers =
-            eth::create_get_block_headers_message(&current_hash, 2, 1024, true);
-        utils::send_message(
-            get_blocks_headers,
-            &mut stream,
-            &mut egress_mac,
-            &mut egress_aes,
-        );
-
-        let mut uncrypted_body: Vec<u8>;
-        let mut code;
-        loop {
-            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
-
-            if uncrypted_body[0] > 16 {
-                code = uncrypted_body[0] - 16;
-                if code == 4 {
-                    break;
-                }
-            }
-        }
-
-        assert_eq!(code, 4);
-
-        let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
-
-        // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
-    }
-
     /********************
      *
      *  Start database thread
@@ -345,200 +123,483 @@ fn main() {
         info!("Closing thread!");
     });
 
-    /****************************
+    /******************
      *
-     *  START FETCHING BLOCKS
+     *  Peer Discovery
      *
-     ****************************/
+     ******************/
 
-    let mut thread_stream = stream.try_clone().unwrap();
-    let thread_egress_mac = Arc::clone(&egress_mac);
-    let thread_egress_aes = Arc::clone(&egress_aes);
+    let rt  = Runtime::new().unwrap();
 
-    let (tx_tcp, rx_tcp) = channel();
-
-    let _tcp_handle = thread::spawn(move || {
-        let mut uncrypted_body: Vec<u8>;
-        let mut code;
-        loop {
-            uncrypted_body =
-                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes);
-
-            // handle RLPx message
-            if uncrypted_body[0] < 16 {
-                info!("Code {}", uncrypted_body[0]);
-                info!("{}", hex::encode(&uncrypted_body));
-                code = uncrypted_body[0];
-
-                if code == 2 {
-                    // send pong
-                    let pong = message::create_pong_message();
-
-                    utils::send_message(
-                        pong,
-                        &mut thread_stream,
-                        &thread_egress_mac,
-                        &thread_egress_aes,
-                    );
-                }
-
-                if code == 1 {
-                    // Received a disconnect message
-                    let mut dec = snap::raw::Decoder::new();
-                    let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
-
-                    panic!("Disconnected ! {}", hex::encode(&message))
-                }
-
-                continue;
-            }
-
-            if uncrypted_body[0] - 16 == 11 {
-                let mut dec = snap::raw::Decoder::new();
-                let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
-                info!(
-                    "upgrade status message received (only binance) : {}",
-                    hex::encode(&message)
-                );
-            }
-
-            if uncrypted_body[0] - 16 == 3 {
-                // Rospten node keep asking us for new block headers that we don't have
-                // Working with Geth/v1.10.23-stable-d901d853 but not v1.10.21
-                let req_id = eth::parse_get_block_bodies(uncrypted_body[1..].to_vec());
-                let empty_block_bodies_message = eth::create_empty_block_headers_message(&req_id);
-
-                utils::send_message(
-                    empty_block_bodies_message,
-                    &mut thread_stream,
-                    &thread_egress_mac,
-                    &thread_egress_aes,
-                );
-            }
-
-            tx_tcp.send(uncrypted_body).unwrap();
-        }
+    // TODO: not optimal; best to entirely rewrite discv4;
+    // fck async y viva synchronous
+    let node = rt.block_on(async {
+        let port = 50505;
+        return discv4::Node::new(
+            format!("0.0.0.0:{}", port).parse().unwrap(),
+            SecretKey::new(&mut secp256k1::rand::thread_rng()),
+            networks::BOOTSTRAP_NODES
+                .iter()
+                .map(|v| v.parse().unwrap())
+                .collect(),
+            None,
+            true,
+            port,
+        )
+        .await
+        .unwrap();
     });
 
     loop {
-        /******************
-         *
-         *  Send GetBlockHeaders message
-         *
-         ******************/
+        let target = rand::random();
+        info!("Looking up random target: {}", target);
 
-        info!("Sending GetBlockHeaders message");
-        let get_blocks_headers =
-            eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, true);
-        utils::send_message(
-            get_blocks_headers,
-            &mut stream,
-            &mut egress_mac,
-            &mut egress_aes,
-        );
+        let result = rt.block_on(async {
+            return node.lookup(target).await;
+        });
 
-        /******************
-         *
-         *  Handle BlockHeader message
-         *
-         ******************/
-
-        info!("Handling BlockHeaders message");
-        let mut uncrypted_body: Vec<u8>;
-        let mut code;
-        loop {
-            uncrypted_body = rx_tcp.recv().unwrap();
-
-            code = uncrypted_body[0] - 16;
-            if code == 4 {
-                break;
-            }
-        }
-
-        assert_eq!(code, 4);
-
-        let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
-
-        // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
-
-        /******************
-         *
-         *  Send GetBlockBodies message
-         *
-         ******************/
-        info!("Sending GetBlockBodies message");
-        let hashes = block_headers
-            .iter()
-            .map(|b| b.hash.clone())
-            .collect::<Vec<Vec<u8>>>();
-
-        let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
-
-        while transactions.len() < hashes.len() {
-            let get_blocks_bodies =
-                eth::create_get_block_bodies_message(&hashes[transactions.len()..].to_vec());
-            utils::send_message(
-                get_blocks_bodies,
-                &mut stream,
-                &mut egress_mac,
-                &mut egress_aes,
-            );
+        for entry in result {
+            info!("Found node: {:?}", entry);
 
             /******************
              *
-             *  Handle BlockHeader message
+             *  Connect to peer
+             *
+             ******************/
+            let mut stream =
+                TcpStream::connect(format!("{}:{}", entry.address, entry.tcp_port)).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(30)))
+                .unwrap();
+            let remote_id = entry.id.0.to_vec();
+
+            let private_key = SecretKey::new(&mut rand::thread_rng())
+                .secret_bytes()
+                .to_vec();
+            let mut nonce = vec![0; 32];
+            rand::thread_rng().fill_bytes(&mut nonce);
+            let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng())
+                .secret_bytes()
+                .to_vec();
+            let pad = vec![0; 100]; // should be generated randomly but we don't really care
+
+            /******************
+             *
+             *  Create Auth message (EIP8 supported)
+             *
+             ******************/
+            info!("Creating EIP8 Auth message");
+            let init_msg =
+                utils::create_auth_eip8(&remote_id, &private_key, &nonce, &ephemeral_privkey, &pad);
+
+            // send the message
+            info!("Sending EIP8 Auth message");
+            stream.write(&init_msg).unwrap();
+            stream.flush().unwrap();
+
+            info!("waiting for answer...");
+            let mut buf = [0u8; 2];
+            let size = stream.read(&mut buf).unwrap();
+
+            // We should have read some bytes
+            assert_ne!(size, 0);
+
+            let size_expected = buf.as_slice().read_u16::<BigEndian>().unwrap() as usize;
+            let shared_mac_data = &buf[0..2];
+
+            let mut payload = vec![0u8; size_expected.into()];
+            let size = stream.read(&mut payload).unwrap();
+
+            assert_eq!(size, size_expected);
+
+            /******************
+             *
+             *  Handle Ack
              *
              ******************/
 
-            info!(
-                "Handling BlockBodies message ({}/{BLOCK_NUM} block bodies received)",
-                transactions.len()
-            );
-            let mut uncrypted_body: Vec<u8>;
-            let mut code;
-            loop {
-                uncrypted_body = rx_tcp.recv().unwrap();
+            info!("ACK message received");
+            let decrypted =
+                utils::decrypt_message(&payload.to_vec(), &shared_mac_data.to_vec(), &private_key);
 
-                code = uncrypted_body[0] - 16;
-                if code == 6 {
+            // decode RPL data
+            let rlp = rlp::Rlp::new(&decrypted);
+            let mut rlp = rlp.into_iter();
+
+            // id to pubkey
+            let remote_public_key: Vec<u8> =
+                [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
+            let remote_nonce: Vec<u8> = rlp.next().unwrap().as_val().unwrap();
+
+            let ephemeral_shared_secret = utils::ecdh_x(&remote_public_key, &ephemeral_privkey);
+
+            /******************
+             *
+             *  Setup Frame
+             *
+             ******************/
+
+            let remote_data = [shared_mac_data, &payload].concat();
+            let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
+                remote_nonce,
+                nonce,
+                ephemeral_shared_secret,
+                remote_data,
+                init_msg,
+            );
+            let mut egress_aes = Arc::new(Mutex::new(egress_aes));
+            let mut egress_mac = Arc::new(Mutex::new(egress_mac));
+
+            info!("Frame setup done !");
+
+            info!("Received Ack, waiting for Header");
+
+            /******************
+             *
+             *  Handle HELLO
+             *
+             ******************/
+
+            let uncrypted_body =
+                utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+
+            if uncrypted_body[0] == 0x01 {
+                info!("Disconnect message : {}", hex::encode(&uncrypted_body));
+                // if peer disconnect try next peer
+                continue;
+            }
+
+            // Should be HELLO
+            assert_eq!(0x80, uncrypted_body[0]);
+            let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
+
+            info!("{:#?}", &hello_message);
+
+            // We need to find the highest eth version it supports
+            let mut version = 0;
+            for capability in hello_message.capabilities {
+                if capability.name.0.to_string() == "eth" {
+                    if capability.version > version {
+                        version = capability.version;
+                    }
+                }
+            }
+
+            /******************
+             *
+             *  Create Hello
+             *
+             ******************/
+
+            info!("Sending HELLO message");
+            let hello = message::create_hello_message(&private_key);
+            utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes);
+
+            /******************
+             *
+             *  Send STATUS message
+             *
+             ******************/
+
+            info!("Sending STATUS message");
+
+            let genesis_hash = network.genesis_hash.to_vec();
+            let head_td = 0;
+            let fork_id = network.fork_id.to_vec();
+            let network_id = network.network_id;
+
+            let status = eth::create_status_message(
+                &version,
+                &genesis_hash,
+                &genesis_hash,
+                &head_td,
+                &fork_id,
+                &network_id,
+            );
+            utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes);
+
+            /******************
+             *
+             *  Handle STATUS message
+             *
+             ******************/
+
+            info!("Handling STATUS message");
+            let uncrypted_body =
+                utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+            if uncrypted_body[0] == 0x01 {
+                info!("Disconnect message : {}", hex::encode(&uncrypted_body));
+                // peer disconnected so we get the next one
+                continue;
+            }
+            let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
+
+            // if not on the same network we disconnect and take the next peer
+            // TODO: network_id should be u16 everywhere
+            if (network_id as u32) != network.network_id {
+                stream.shutdown(Shutdown::Both).unwrap_or_default();
+                continue;
+            }
+
+            /******************
+             *
+             *  Send UPGRADE STATUS message (binance only)
+             *
+             ******************/
+            if network == networks::Network::BINANCE_MAINNET {
+                let upgrade_status = eth::create_upgrade_status_message();
+                utils::send_message(
+                    upgrade_status,
+                    &mut stream,
+                    &mut egress_mac,
+                    &mut egress_aes,
+                );
+            }
+
+            // If we do't have blocks in the database we use the best one
+            if current_hash.len() == 0 {
+                current_hash = their_current_hash;
+
+                /******************
+                 *
+                 *  Get safe block hash (approx 1024 blocks behind the highest)
+                 *
+                 ******************/
+
+                info!("Get safe block hash");
+                let get_blocks_headers =
+                    eth::create_get_block_headers_message(&current_hash, 2, 1024, true);
+                utils::send_message(
+                    get_blocks_headers,
+                    &mut stream,
+                    &mut egress_mac,
+                    &mut egress_aes,
+                );
+
+                let mut uncrypted_body: Vec<u8>;
+                let mut code;
+                loop {
+                    uncrypted_body =
+                        utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+
+                    if uncrypted_body[0] > 16 {
+                        code = uncrypted_body[0] - 16;
+                        if code == 4 {
+                            break;
+                        }
+                    }
+                }
+
+                assert_eq!(code, 4);
+
+                let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
+
+                // update block hash
+                current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+            }
+
+            /****************************
+             *
+             *  START FETCHING BLOCKS
+             *
+             ****************************/
+
+            let mut thread_stream = stream.try_clone().unwrap();
+            let thread_egress_mac = Arc::clone(&egress_mac);
+            let thread_egress_aes = Arc::clone(&egress_aes);
+
+            let (tx_tcp, rx_tcp) = channel();
+
+            let _tcp_handle = thread::spawn(move || {
+                let mut uncrypted_body: Vec<u8>;
+                let mut code;
+                loop {
+                    uncrypted_body =
+                        utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes);
+
+                    // handle RLPx message
+                    if uncrypted_body[0] < 16 {
+                        info!("Code {}", uncrypted_body[0]);
+                        info!("{}", hex::encode(&uncrypted_body));
+                        code = uncrypted_body[0];
+
+                        if code == 2 {
+                            // send pong
+                            let pong = message::create_pong_message();
+
+                            utils::send_message(
+                                pong,
+                                &mut thread_stream,
+                                &thread_egress_mac,
+                                &thread_egress_aes,
+                            );
+                        }
+
+                        if code == 1 {
+                            // Received a disconnect message
+                            let mut dec = snap::raw::Decoder::new();
+                            let message =
+                                dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
+
+                            panic!("Disconnected ! {}", hex::encode(&message))
+                        }
+
+                        continue;
+                    }
+
+                    if uncrypted_body[0] - 16 == 11 {
+                        let mut dec = snap::raw::Decoder::new();
+                        let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
+                        info!(
+                            "upgrade status message received (only binance) : {}",
+                            hex::encode(&message)
+                        );
+                    }
+
+                    if uncrypted_body[0] - 16 == 3 {
+                        // Rospten node keep asking us for new block headers that we don't have
+                        // Working with Geth/v1.10.23-stable-d901d853 but not v1.10.21
+                        let req_id = eth::parse_get_block_bodies(uncrypted_body[1..].to_vec());
+                        let empty_block_bodies_message =
+                            eth::create_empty_block_headers_message(&req_id);
+
+                        utils::send_message(
+                            empty_block_bodies_message,
+                            &mut thread_stream,
+                            &thread_egress_mac,
+                            &thread_egress_aes,
+                        );
+                    }
+
+                    tx_tcp.send(uncrypted_body).unwrap();
+                }
+            });
+
+            loop {
+                /******************
+                 *
+                 *  Send GetBlockHeaders message
+                 *
+                 ******************/
+
+                info!("Sending GetBlockHeaders message");
+                let get_blocks_headers =
+                    eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, true);
+                utils::send_message(
+                    get_blocks_headers,
+                    &mut stream,
+                    &mut egress_mac,
+                    &mut egress_aes,
+                );
+
+                /******************
+                 *
+                 *  Handle BlockHeader message
+                 *
+                 ******************/
+
+                info!("Handling BlockHeaders message");
+                let mut uncrypted_body: Vec<u8>;
+                let mut code;
+                loop {
+                    uncrypted_body = rx_tcp.recv().unwrap();
+
+                    code = uncrypted_body[0] - 16;
+                    if code == 4 {
+                        break;
+                    }
+                }
+
+                assert_eq!(code, 4);
+
+                let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
+
+                // update block hash
+                current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+
+                /******************
+                 *
+                 *  Send GetBlockBodies message
+                 *
+                 ******************/
+                info!("Sending GetBlockBodies message");
+                let hashes = block_headers
+                    .iter()
+                    .map(|b| b.hash.clone())
+                    .collect::<Vec<Vec<u8>>>();
+
+                let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
+
+                while transactions.len() < hashes.len() {
+                    let get_blocks_bodies = eth::create_get_block_bodies_message(
+                        &hashes[transactions.len()..].to_vec(),
+                    );
+                    utils::send_message(
+                        get_blocks_bodies,
+                        &mut stream,
+                        &mut egress_mac,
+                        &mut egress_aes,
+                    );
+
+                    /******************
+                     *
+                     *  Handle BlockHeader message
+                     *
+                     ******************/
+
+                    info!(
+                        "Handling BlockBodies message ({}/{BLOCK_NUM} block bodies received)",
+                        transactions.len()
+                    );
+                    let mut uncrypted_body: Vec<u8>;
+                    let mut code;
+                    loop {
+                        uncrypted_body = rx_tcp.recv().unwrap();
+
+                        code = uncrypted_body[0] - 16;
+                        if code == 6 {
+                            break;
+                        }
+                    }
+                    assert_eq!(code, 6);
+
+                    let tmp_txs = eth::parse_block_bodies(uncrypted_body[1..].to_vec());
+                    transactions.extend(tmp_txs);
+                }
+
+                let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                    vec![];
+                let t_iter = transactions.iter();
+                t_iter
+                    .enumerate()
+                    .for_each(|(i, (txs, ommers, withdrawals))| {
+                        blocks.push((
+                            block_headers[i].clone(),
+                            txs.to_vec(),
+                            ommers.to_vec(),
+                            withdrawals.to_vec(),
+                        ));
+                    });
+
+                let current_height = blocks.last().unwrap().0.number;
+                info!("Blocks n° {}", current_height);
+
+                // send blocks to the other thread to save in database
+                if blocks.len() > 0 {
+                    tx.send(blocks).unwrap();
+                }
+
+                if current_height == 0 {
+                    info!("Data fully synced");
+
                     break;
                 }
             }
-            assert_eq!(code, 6);
-
-            let tmp_txs = eth::parse_block_bodies(uncrypted_body[1..].to_vec());
-            transactions.extend(tmp_txs);
         }
 
-        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
-        let t_iter = transactions.iter();
-        t_iter
-            .enumerate()
-            .for_each(|(i, (txs, ommers, withdrawals))| {
-                blocks.push((
-                    block_headers[i].clone(),
-                    txs.to_vec(),
-                    ommers.to_vec(),
-                    withdrawals.to_vec(),
-                ));
-            });
-
-        let current_height = blocks.last().unwrap().0.number;
-        info!("Blocks n° {}", current_height);
-
-        // send blocks to the other thread to save in database
-        if blocks.len() > 0 {
-            tx.send(blocks).unwrap();
-        }
-
-        if current_height == 0 {
-            info!("Data fully synced");
-
-            // need to wait for database thread to finish
-            database_handle.join().unwrap();
-
-            break;
-        }
+        break;
     }
+
+    // need to wait for database thread to finish
+    database_handle.join().unwrap();
 }
