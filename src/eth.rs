@@ -1,9 +1,9 @@
-use rlp::Rlp;
 use sha3::{Digest, Keccak256};
 
-use super::constants::BASE_PROTOCOL_OFFSET;
 use crate::message::{parse_transaction, util_parse_withdrawal};
 use crate::types::{Block, Transaction, Withdrawal};
+
+pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
 // Create status message following the ETH protocol
 pub fn create_status_message(

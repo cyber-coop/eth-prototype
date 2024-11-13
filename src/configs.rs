@@ -14,7 +14,7 @@ pub struct DatabaseConfig {
 #[derive(Debug, Deserialize)]
 pub struct Peer {
     pub ip: String,
-    pub port: u32,
+    pub port: u16,
     #[serde(with = "hex::serde")]
     pub remote_id: Vec<u8>, // [u8; 64]
 }
