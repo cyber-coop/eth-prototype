@@ -128,15 +128,22 @@ fn main() {
     // if we have specified a peer we only use this peer. Otherwise we do peer discovery.
     match config.peer {
         Some(peer) => {
-            let result = start(peer.ip, peer.port, peer.remote_id, &network, &mut current_hash, &tx);
-            
+            let result = start(
+                peer.ip,
+                peer.port,
+                peer.remote_id,
+                &network,
+                &mut current_hash,
+                &tx,
+            );
+
             if let Err(_) = result {
                 // We have encountered an error with the given peer. So we exit.
                 // TODO: we should gracefully handle the database connection shutdown here.
 
                 process::exit(1);
             };
-        },
+        }
         None => {
             /******************
              *
@@ -164,34 +171,41 @@ fn main() {
                 .await
                 .unwrap();
             });
-        
+
             loop {
                 let target = rand::random();
                 info!("Looking up random target: {}", target);
-        
+
                 let result = rt.block_on(async {
                     return node.lookup(target).await;
                 });
-        
+
                 for entry in result {
                     info!("Found node: {:?}", entry);
-        
+
                     // start the indexer process
-                    let result = start(entry.address.to_string(), entry.tcp_port, entry.id.0.to_vec(), &network, &mut current_hash, &tx);
-        
+                    let result = start(
+                        entry.address.to_string(),
+                        entry.tcp_port,
+                        entry.id.0.to_vec(),
+                        &network,
+                        &mut current_hash,
+                        &tx,
+                    );
+
                     match result {
                         Ok(_) => {
                             // we are done indexing
                             break;
-                        },
-                        Err(IndexerError::PeerDisconnected) | Err(IndexerError::MismatchNetworkId) => {
+                        }
+                        Err(IndexerError::PeerDisconnected)
+                        | Err(IndexerError::MismatchNetworkId) => {
                             // We have encountered an error with a peer so we take the next one
                             continue;
                         }
                     };
-
                 }
-        
+
                 break;
             }
         }
@@ -207,15 +221,20 @@ enum IndexerError {
 }
 
 // NOTE: we could have an indexer object that implement the start function instead of having this long list of arguments
-fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, current_hash: &mut Vec<u8>, tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>) -> Result<(), IndexerError>{
-    
+fn start(
+    ip: String,
+    tcp_port: u16,
+    remote_id: Vec<u8>,
+    network: &Network,
+    current_hash: &mut Vec<u8>,
+    tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
+) -> Result<(), IndexerError> {
     /******************
      *
      *  Connect to peer
      *
      ******************/
-        let mut stream =
-        TcpStream::connect(format!("{}:{}", ip, tcp_port)).unwrap();
+    let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
@@ -232,9 +251,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
     /******************
      *
-    *  Create Auth message (EIP8 supported)
-    *
-    ******************/
+     *  Create Auth message (EIP8 supported)
+     *
+     ******************/
     info!("Creating EIP8 Auth message");
     let init_msg =
         utils::create_auth_eip8(&remote_id, &private_key, &nonce, &ephemeral_privkey, &pad);
@@ -261,9 +280,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
     /******************
      *
-    *  Handle Ack
-    *
-    ******************/
+     *  Handle Ack
+     *
+     ******************/
 
     info!("ACK message received");
     let decrypted =
@@ -274,17 +293,16 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
     let mut rlp = rlp.into_iter();
 
     // id to pubkey
-    let remote_public_key: Vec<u8> =
-        [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
+    let remote_public_key: Vec<u8> = [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
     let remote_nonce: Vec<u8> = rlp.next().unwrap().as_val().unwrap();
 
     let ephemeral_shared_secret = utils::ecdh_x(&remote_public_key, &ephemeral_privkey);
 
     /******************
      *
-    *  Setup Frame
-    *
-    ******************/
+     *  Setup Frame
+     *
+     ******************/
 
     let remote_data = [shared_mac_data, &payload].concat();
     let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
@@ -307,8 +325,7 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
      *
      ******************/
 
-    let uncrypted_body =
-        utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
 
     if uncrypted_body[0] == 0x01 {
         info!("Disconnect message : {}", hex::encode(&uncrypted_body));
@@ -372,14 +389,12 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
      ******************/
 
     info!("Handling STATUS message");
-    let uncrypted_body =
-        utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     if uncrypted_body[0] == 0x01 {
         info!("Disconnect message : {}", hex::encode(&uncrypted_body));
         return Err(IndexerError::PeerDisconnected);
     }
-    let (their_current_hash, network_id) =
-        eth::parse_status_message(uncrypted_body[1..].to_vec());
+    let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
     // if not on the same network we disconnect and take the next peer
     // TODO: network_id should be u16 everywhere
@@ -390,9 +405,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
     /******************
      *
-    *  Send UPGRADE STATUS message (binance only)
-    *
-    ******************/
+     *  Send UPGRADE STATUS message (binance only)
+     *
+     ******************/
     if *network == networks::Network::BINANCE_MAINNET {
         let upgrade_status = eth::create_upgrade_status_message();
         utils::send_message(
@@ -409,9 +424,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
         /******************
          *
-        *  Get safe block hash (approx 1024 blocks behind the highest)
-        *
-        ******************/
+         *  Get safe block hash (approx 1024 blocks behind the highest)
+         *
+         ******************/
 
         info!("Get safe block hash");
         let get_blocks_headers =
@@ -426,8 +441,7 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body =
-                utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
 
             if uncrypted_body[0] > 16 {
                 code = uncrypted_body[0] - 16;
@@ -447,9 +461,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
     /****************************
      *
-    *  START FETCHING BLOCKS
-    *
-    ****************************/
+     *  START FETCHING BLOCKS
+     *
+     ****************************/
 
     let mut thread_stream = stream.try_clone().unwrap();
     let thread_egress_mac = Arc::clone(&egress_mac);
@@ -485,8 +499,7 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
                 if code == 1 {
                     // Received a disconnect message
                     let mut dec = snap::raw::Decoder::new();
-                    let message =
-                        dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
+                    let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
 
                     panic!("Disconnected ! {}", hex::encode(&message))
                 }
@@ -507,8 +520,7 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
                 // Rospten node keep asking us for new block headers that we don't have
                 // Working with Geth/v1.10.23-stable-d901d853 but not v1.10.21
                 let req_id = eth::parse_get_block_bodies(uncrypted_body[1..].to_vec());
-                let empty_block_bodies_message =
-                    eth::create_empty_block_headers_message(&req_id);
+                let empty_block_bodies_message = eth::create_empty_block_headers_message(&req_id);
 
                 utils::send_message(
                     empty_block_bodies_message,
@@ -525,9 +537,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
     loop {
         /******************
          *
-        *  Send GetBlockHeaders message
-        *
-        ******************/
+         *  Send GetBlockHeaders message
+         *
+         ******************/
 
         info!("Sending GetBlockHeaders message");
         let get_blocks_headers =
@@ -541,9 +553,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
         /******************
          *
-        *  Handle BlockHeader message
-        *
-        ******************/
+         *  Handle BlockHeader message
+         *
+         ******************/
 
         info!("Handling BlockHeaders message");
         let mut uncrypted_body: Vec<u8>;
@@ -566,9 +578,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
         /******************
          *
-        *  Send GetBlockBodies message
-        *
-        ******************/
+         *  Send GetBlockBodies message
+         *
+         ******************/
         info!("Sending GetBlockBodies message");
         let hashes = block_headers
             .iter()
@@ -578,9 +590,8 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
         let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
 
         while transactions.len() < hashes.len() {
-            let get_blocks_bodies = eth::create_get_block_bodies_message(
-                &hashes[transactions.len()..].to_vec(),
-            );
+            let get_blocks_bodies =
+                eth::create_get_block_bodies_message(&hashes[transactions.len()..].to_vec());
             utils::send_message(
                 get_blocks_bodies,
                 &mut stream,
@@ -590,9 +601,9 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
 
             /******************
              *
-            *  Handle BlockHeader message
-            *
-            ******************/
+             *  Handle BlockHeader message
+             *
+             ******************/
 
             info!(
                 "Handling BlockBodies message ({}/{BLOCK_NUM} block bodies received)",
@@ -614,8 +625,7 @@ fn start(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network, curre
             transactions.extend(tmp_txs);
         }
 
-        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-            vec![];
+        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
         let t_iter = transactions.iter();
         t_iter
             .enumerate()
