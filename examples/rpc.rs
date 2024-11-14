@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use eth_prototype::protocols::eth;
+use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
 use eth_prototype::{configs, message, networks, types, utils};
 
@@ -43,11 +43,10 @@ fn main() {
     // Load config values from the config file
     let config = configs::read_config();
     let network = networks::Network::find("ethereum_mainnet").unwrap();
-    let mut current_hash: Vec<u8> = vec![];
 
     let mut stream =
-        TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
-    let remote_id = config.peer.remote_id;
+        TcpStream::connect(format!("{}:{}", config.peer.as_ref().unwrap().ip, config.peer.as_ref().unwrap().port)).unwrap();
+    let remote_id = config.peer.unwrap().remote_id;
 
     let private_key =
         hex::decode("472D4B6150645267556B58703273357638792F423F4528482B4D625165546856").unwrap();
@@ -183,7 +182,7 @@ fn main() {
 
     println!("Handling STATUS message");
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
-    current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
+    let (current_hash, _network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
     /****************************
      *
@@ -243,7 +242,7 @@ fn main() {
     let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
     // update block hash
-    current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+    block_headers.last().unwrap().parent_hash.to_vec();
 
     /******************
      *
