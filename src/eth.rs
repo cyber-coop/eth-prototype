@@ -307,8 +307,7 @@ pub fn create_upgrade_status_message() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocols::constants::BASE_PROTOCOL_OFFSET;
-
+    use super::BASE_PROTOCOL_OFFSET;
     use super::create_upgrade_status_message;
 
     #[test]
