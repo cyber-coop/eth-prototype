@@ -307,8 +307,8 @@ pub fn create_upgrade_status_message() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::BASE_PROTOCOL_OFFSET;
     use super::create_upgrade_status_message;
+    use super::BASE_PROTOCOL_OFFSET;
 
     #[test]
     fn test_create_upgrade_status_message() {
