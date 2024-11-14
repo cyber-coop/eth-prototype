@@ -44,8 +44,12 @@ fn main() {
     let config = configs::read_config();
     let network = networks::Network::find("ethereum_mainnet").unwrap();
 
-    let mut stream =
-        TcpStream::connect(format!("{}:{}", config.peer.as_ref().unwrap().ip, config.peer.as_ref().unwrap().port)).unwrap();
+    let mut stream = TcpStream::connect(format!(
+        "{}:{}",
+        config.peer.as_ref().unwrap().ip,
+        config.peer.as_ref().unwrap().port
+    ))
+    .unwrap();
     let remote_id = config.peer.unwrap().remote_id;
 
     let private_key =
