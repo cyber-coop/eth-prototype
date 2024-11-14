@@ -8,10 +8,6 @@ edition = "2021"
 name = "eth-prototype"
 path = "src/main.rs"
 
-[[bench]]
-name = "indexer-benchmark"
-path = "bench/mod.rs"
-
 [lib]
 name = "eth_prototype"
 path = "src/lib.rs"
@@ -50,6 +46,3 @@ secp256k1_20 = { package = "secp256k1", version = "0.20", features = ["recovery"
 ethereum-types = "0.14.1"
 tx-from-scratch = { git = "https://github.com/Kuly14/tx-from-scratch" }
 web3 = "0.19.0"
-
-# benchmark
-reqwest = {version = "0.11.23", features = ["blocking", "json"]}
