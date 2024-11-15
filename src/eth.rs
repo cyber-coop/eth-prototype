@@ -1,9 +1,9 @@
-use rlp::Rlp;
 use sha3::{Digest, Keccak256};
 
-use super::constants::BASE_PROTOCOL_OFFSET;
 use crate::message::{parse_transaction, util_parse_withdrawal};
 use crate::types::{Block, Transaction, Withdrawal};
+
+pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
 // Create status message following the ETH protocol
 pub fn create_status_message(
@@ -42,7 +42,7 @@ pub fn create_status_message(
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
+pub fn parse_status_message(payload: Vec<u8>) -> (Vec<u8>, u16) {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
@@ -50,12 +50,12 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     assert!(r.is_list());
 
     let _version: u16 = r.at(0).unwrap().as_val().unwrap();
-    // let _network_id: u16 = r.at(1).unwrap().as_val().unwrap();
+    let network_id: u16 = r.at(1).unwrap().as_val().unwrap();
     // let td: u16 = r.at(2).unwrap().as_val().unwrap();
     let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
     let _genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
 
-    return blockhash;
+    return (blockhash, network_id);
 }
 
 pub fn create_get_block_headers_message(
@@ -307,9 +307,8 @@ pub fn create_upgrade_status_message() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocols::constants::BASE_PROTOCOL_OFFSET;
-
     use super::create_upgrade_status_message;
+    use super::BASE_PROTOCOL_OFFSET;
 
     #[test]
     fn test_create_upgrade_status_message() {

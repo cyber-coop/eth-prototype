@@ -1,18 +1,22 @@
 use byteorder::{BigEndian, ReadBytesExt};
+use eth_prototype::networks::Network;
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
 use std::io::prelude::*;
 use std::io::Read;
+use std::net::Shutdown;
 use std::net::TcpStream;
 use std::process;
+use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use tokio::runtime::Runtime;
 
-use eth_prototype::protocols::eth;
+use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
 use eth_prototype::{configs, database, message, networks, types, utils};
 
@@ -87,17 +91,153 @@ fn main() {
         info!("We are starting at hash {}", hex::encode(&current_hash));
     }
 
+    /********************
+     *
+     *  Start database thread
+     *
+     ********************/
+
+    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
+    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
+
+    let database_handle = thread::spawn(move || {
+        info!("Starting database thread");
+
+        // Connect to database
+        let mut postgres_client =
+            postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
+
+        // while recv save blocks in database
+        loop {
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                rx.recv().unwrap();
+            database::save_blocks(&blocks, &network_arg, &mut postgres_client);
+
+            // We are synced
+            if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
+                info!("We are synced !");
+                // Open, read and execute SQL scripts at the end of sync
+                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
+                break;
+            }
+        }
+
+        info!("Closing thread!");
+    });
+
+    // if we have specified a peer we only use this peer. Otherwise we do peer discovery.
+    match config.peer {
+        Some(peer) => {
+            let result = start(
+                peer.ip,
+                peer.port,
+                peer.remote_id,
+                &network,
+                &mut current_hash,
+                &tx,
+            );
+
+            if let Err(_) = result {
+                // We have encountered an error with the given peer. So we exit.
+                // TODO: we should gracefully handle the database connection shutdown here.
+
+                process::exit(1);
+            };
+        }
+        None => {
+            /******************
+             *
+             *  Peer Discovery
+             *
+             ******************/
+
+            let rt = Runtime::new().unwrap();
+
+            // TODO: not optimal; best to entirely rewrite discv4;
+            // fck async y viva synchronous
+            let node = rt.block_on(async {
+                let port = 50505;
+                return discv4::Node::new(
+                    format!("0.0.0.0:{}", port).parse().unwrap(),
+                    SecretKey::new(&mut secp256k1::rand::thread_rng()),
+                    networks::BOOTSTRAP_NODES
+                        .iter()
+                        .map(|v| v.parse().unwrap())
+                        .collect(),
+                    None,
+                    true,
+                    port,
+                )
+                .await
+                .unwrap();
+            });
+
+            loop {
+                let target = rand::random();
+                info!("Looking up random target: {}", target);
+
+                let result = rt.block_on(async {
+                    return node.lookup(target).await;
+                });
+
+                for entry in result {
+                    info!("Found node: {:?}", entry);
+
+                    // start the indexer process
+                    let result = start(
+                        entry.address.to_string(),
+                        entry.tcp_port,
+                        entry.id.0.to_vec(),
+                        &network,
+                        &mut current_hash,
+                        &tx,
+                    );
+
+                    match result {
+                        Ok(_) => {
+                            // we are done indexing
+                            break;
+                        }
+                        Err(IndexerError::PeerDisconnected)
+                        | Err(IndexerError::MismatchNetworkId) => {
+                            // We have encountered an error with a peer so we take the next one
+                            continue;
+                        }
+                    };
+                }
+
+                break;
+            }
+        }
+    }
+
+    // need to wait for database thread to finish
+    database_handle.join().unwrap();
+}
+
+enum IndexerError {
+    PeerDisconnected,
+    MismatchNetworkId,
+}
+
+// NOTE: we could have an indexer object that implement the start function instead of having this long list of arguments
+fn start(
+    ip: String,
+    tcp_port: u16,
+    remote_id: Vec<u8>,
+    network: &Network,
+    current_hash: &mut Vec<u8>,
+    tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
+) -> Result<(), IndexerError> {
     /******************
      *
      *  Connect to peer
      *
      ******************/
-    let mut stream =
-        TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
+    let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
-    let remote_id = config.peer.remote_id;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
         .secret_bytes()
@@ -189,7 +329,8 @@ fn main() {
 
     if uncrypted_body[0] == 0x01 {
         info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        process::exit(1);
+        // if peer disconnect try next peer
+        return Err(IndexerError::PeerDisconnected);
     }
 
     // Should be HELLO
@@ -251,16 +392,23 @@ fn main() {
     let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
     if uncrypted_body[0] == 0x01 {
         info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        process::exit(1);
+        return Err(IndexerError::PeerDisconnected);
     }
-    let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
+    let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
+
+    // if not on the same network we disconnect and take the next peer
+    // TODO: network_id should be u16 everywhere
+    if (network_id as u32) != network.network_id {
+        stream.shutdown(Shutdown::Both).unwrap_or_default();
+        return Err(IndexerError::MismatchNetworkId);
+    }
 
     /******************
      *
      *  Send UPGRADE STATUS message (binance only)
      *
      ******************/
-    if network_arg == "binance_mainnet" {
+    if *network == networks::Network::BINANCE_MAINNET {
         let upgrade_status = eth::create_upgrade_status_message();
         utils::send_message(
             upgrade_status,
@@ -272,7 +420,7 @@ fn main() {
 
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
-        current_hash = their_current_hash;
+        *current_hash = their_current_hash;
 
         /******************
          *
@@ -308,42 +456,8 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
     }
-
-    /********************
-     *
-     *  Start database thread
-     *
-     ********************/
-
-    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
-    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
-
-    let database_handle = thread::spawn(move || {
-        info!("Starting database thread");
-
-        // Connect to database
-        let mut postgres_client =
-            postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
-
-        // while recv save blocks in database
-        loop {
-            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-                rx.recv().unwrap();
-            database::save_blocks(&blocks, &network_arg, &mut postgres_client);
-
-            // We are synced
-            if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
-                info!("We are synced !");
-                // Open, read and execute SQL scripts at the end of sync
-                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
-                break;
-            }
-        }
-
-        info!("Closing thread!");
-    });
 
     /****************************
      *
@@ -460,7 +574,7 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
 
         /******************
          *
@@ -535,10 +649,9 @@ fn main() {
         if current_height == 0 {
             info!("Data fully synced");
 
-            // need to wait for database thread to finish
-            database_handle.join().unwrap();
-
             break;
         }
     }
+
+    Ok(())
 }
