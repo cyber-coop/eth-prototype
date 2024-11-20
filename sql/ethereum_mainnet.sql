@@ -14,7 +14,8 @@ ALTER TABLE ethereum_mainnet.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (c
 
 --- Create Index
 ---- We use B-Tree indexing because we want to do more inserts of new transactions later and it is supposedly faster 
+CREATE INDEX i_toaddress ON ethereum_mainnet.transactions using btree (toaddress);
 CREATE INDEX i_blocknumber ON ethereum_mainnet.blocks using btree (number);
 CREATE INDEX i_txid ON ethereum_mainnet.transactions using btree (txid);
-CREATE INDEX i_txid ON ethereum_mainnet.transactions using btree (block);
+CREATE INDEX i_block ON ethereum_mainnet.transactions using btree (block);
 CREATE INDEX i_ommerphash ON ethereum_mainnet.ommers using btree (canonical_hash);

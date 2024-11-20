@@ -17,5 +17,5 @@ ALTER TABLE ethereum_sepolia.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (c
 CREATE INDEX i_toaddress ON ethereum_sepolia.transactions using btree (toaddress);
 CREATE INDEX i_blocknumber ON ethereum_sepolia.blocks using btree (number);
 CREATE INDEX i_txid ON ethereum_sepolia.transactions using btree (txid);
-CREATE INDEX i_txid ON ethereum_sepolia.transactions using btree (block);
+CREATE INDEX i_block ON ethereum_sepolia.transactions using btree (block);
 CREATE INDEX i_ommerphash ON ethereum_sepolia.ommers using btree (canonical_hash);
