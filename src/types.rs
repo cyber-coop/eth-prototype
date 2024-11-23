@@ -1,4 +1,3 @@
-use arrayvec::ArrayString;
 use num::BigUint;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use serde::Serialize;
@@ -18,8 +17,8 @@ pub struct CapabilityMessage {
     pub version: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct CapabilityName(pub ArrayString<[u8; 4]>);
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CapabilityName(pub String);
 
 impl Decodable for HelloMessage {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
@@ -64,11 +63,7 @@ impl Encodable for CapabilityMessage {
 impl rlp::Decodable for CapabilityName {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         Ok(Self(
-            ArrayString::from(
-                std::str::from_utf8(rlp.data()?)
-                    .map_err(|_| DecoderError::Custom("should be a UTF-8 string"))?,
-            )
-            .map_err(|_| DecoderError::RlpIsTooBig)?,
+            rlp.as_val()?
         ))
     }
 }
@@ -147,6 +142,24 @@ mod tests {
     #[test]
     fn test_rlp_hello_message() {
         let payload = hex::decode("f89d05b2476574682f76312e31302e32352d737461626c652d36393536386335352f6c696e75782d616d6436342f676f312e31382e35e5c58365746842c58365746843c5836c657302c5836c657303c5836c657304c684736e61700180b840b6b28890b006743680c52e64e0d16db57f28124885595fa03a562be1d2bf0f3a1da297d56b13da25fb992888fd556d4c1a27b1f39d531bde7de1921c90061cc6").unwrap();
-        let _hello_message = rlp::decode::<HelloMessage>(&payload);
+        let hello_message = rlp::decode::<HelloMessage>(&payload);
+
+        assert!(hello_message.is_ok());
+    }
+
+    #[test]
+    fn test_rlp_hello_message_2() {
+        let payload = hex::decode("f8a705b83a4e65746865726d696e642f76312e32392e322d736875747465722b33363462643363612f6c696e75782d7836342f646f746e6574382e302e3130e4c58365746842c58365746843c58365746844ca886e6f64656461746101c684736e61700182765fb840fd898452d658275baa77b7d47c4cbd9371e8b0c37d0a7f17f7fd1369eb07694b3200af21c3de3722b661ed5be10d562c98e05fbbe2ab91c1c30958e6d77b8d8d").unwrap();
+        let hello_message = rlp::decode::<HelloMessage>(&payload);
+
+        assert!(hello_message.is_ok());
+    }
+
+    #[test]
+    fn test_rlp_hello_message_3() {
+        let payload = hex::decode("f89d05b14e65746865726d696e642f76312e32382e302b39633438313663322f6c696e75782d7836342f646f746e6574382e302e38e4c58365746842c58365746843c58365746844ca886e6f64656461746101c684736e617001823d55b840d43ca5a839f7e95253ba17b474f82d88fb2f5cba45f377c5062d724f4e2e55cc12608f9e1d0021b925243027a6b3637d6dd6fb5e5f9fb573e74e5b38591c245e").unwrap();
+        let hello_message = rlp::decode::<HelloMessage>(&payload);
+
+        assert!(hello_message.is_ok());
     }
 }

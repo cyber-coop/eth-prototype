@@ -1,10 +1,7 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use eth_prototype::networks::Network;
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
-use std::io::prelude::*;
-use std::io::Read;
 use std::net::Shutdown;
 use std::net::TcpStream;
 use std::process;
@@ -15,6 +12,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use std::error;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -172,13 +170,15 @@ fn main() {
                 .unwrap();
             });
 
-            loop {
+            'indexing: loop {
                 let target = rand::random();
                 info!("Looking up random target: {}", target);
 
                 let result = rt.block_on(async {
                     return node.lookup(target).await;
                 });
+
+                info!("Found {} nodes info", result.len());
 
                 for entry in result {
                     info!("Found node: {:?}", entry);
@@ -196,17 +196,14 @@ fn main() {
                     match result {
                         Ok(_) => {
                             // we are done indexing
-                            break;
-                        }
-                        Err(IndexerError::PeerDisconnected)
-                        | Err(IndexerError::MismatchNetworkId) => {
-                            // We have encountered an error with a peer so we take the next one
+                            break 'indexing;
+                        },
+                        Err(e) => {
+                            warn!("Peer failed us; Taking the next in line; (Error : {e})");
                             continue;
                         }
                     };
                 }
-
-                break;
             }
         }
     }
@@ -215,10 +212,6 @@ fn main() {
     database_handle.join().unwrap();
 }
 
-enum IndexerError {
-    PeerDisconnected,
-    MismatchNetworkId,
-}
 
 // NOTE: we could have an indexer object that implement the start function instead of having this long list of arguments
 fn start(
@@ -228,16 +221,15 @@ fn start(
     network: &Network,
     current_hash: &mut Vec<u8>,
     tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
-) -> Result<(), IndexerError> {
+) -> Result<(), Box<dyn error::Error>> {
     /******************
      *
      *  Connect to peer
      *
      ******************/
-    let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port)).unwrap();
+    let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port))?;
     stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .unwrap();
+        .set_read_timeout(Some(Duration::from_secs(30)))?;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
         .secret_bytes()
@@ -260,23 +252,7 @@ fn start(
 
     // send the message
     info!("Sending EIP8 Auth message");
-    stream.write(&init_msg).unwrap();
-    stream.flush().unwrap();
-
-    info!("waiting for answer...");
-    let mut buf = [0u8; 2];
-    let size = stream.read(&mut buf).unwrap();
-
-    // We should have read some bytes
-    assert_ne!(size, 0);
-
-    let size_expected = buf.as_slice().read_u16::<BigEndian>().unwrap() as usize;
-    let shared_mac_data = &buf[0..2];
-
-    let mut payload = vec![0u8; size_expected.into()];
-    let size = stream.read(&mut payload).unwrap();
-
-    assert_eq!(size, size_expected);
+    utils::send_eip8_auth_message(&init_msg, &mut stream)?;
 
     /******************
      *
@@ -284,19 +260,16 @@ fn start(
      *
      ******************/
 
-    info!("ACK message received");
-    let decrypted =
-        utils::decrypt_message(&payload.to_vec(), &shared_mac_data.to_vec(), &private_key);
+    info!("waiting for answer (ACK message)...");
+    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream)?;
 
-    // decode RPL data
-    let rlp = rlp::Rlp::new(&decrypted);
-    let mut rlp = rlp.into_iter();
+    info!("Received Ack");
+    if payload[0] != 0x04 {
+        dbg!(payload[0]);
+        return Err("Didn't received ACK when expecting it".into());
+    }
 
-    // id to pubkey
-    let remote_public_key: Vec<u8> = [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
-    let remote_nonce: Vec<u8> = rlp.next().unwrap().as_val().unwrap();
-
-    let ephemeral_shared_secret = utils::ecdh_x(&remote_public_key, &ephemeral_privkey);
+    let (_remote_public_key, remote_nonce, ephemeral_shared_secret) = utils::handle_ack_message(&payload, &shared_mac_data, &private_key, &ephemeral_privkey);
 
     /******************
      *
@@ -304,7 +277,7 @@ fn start(
      *
      ******************/
 
-    let remote_data = [shared_mac_data, &payload].concat();
+    let remote_data = [shared_mac_data, payload].concat();
     let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
         remote_nonce,
         nonce,
@@ -325,17 +298,17 @@ fn start(
      *
      ******************/
 
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
 
     if uncrypted_body[0] == 0x01 {
         info!("Disconnect message : {}", hex::encode(&uncrypted_body));
         // if peer disconnect try next peer
-        return Err(IndexerError::PeerDisconnected);
+        return Err("We received a disconnect message".into());
     }
 
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
-    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
+    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).expect(&format!("To be able to decode {}", hex::encode(&uncrypted_body[1..])));
 
     info!("{:#?}", &hello_message);
 
@@ -389,18 +362,17 @@ fn start(
      ******************/
 
     info!("Handling STATUS message");
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
     if uncrypted_body[0] == 0x01 {
         info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        return Err(IndexerError::PeerDisconnected);
+        return Err("We received a disconnect message".into());
     }
     let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
     // if not on the same network we disconnect and take the next peer
-    // TODO: network_id should be u16 everywhere
-    if (network_id as u32) != network.network_id {
+    if network_id != network.network_id {
         stream.shutdown(Shutdown::Both).unwrap_or_default();
-        return Err(IndexerError::MismatchNetworkId);
+        return Err(format!("Wrong network {} != {}", network.network_id, network_id).into());
     }
 
     /******************
@@ -441,7 +413,7 @@ fn start(
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
 
             if uncrypted_body[0] > 16 {
                 code = uncrypted_body[0] - 16;
@@ -456,7 +428,11 @@ fn start(
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        if let Some(last_block) = block_headers.last() {
+            *current_hash = last_block.parent_hash.to_vec();
+        } else {
+            return Err("No blocks given when asked for headers".into());
+        };
     }
 
     /****************************
@@ -476,7 +452,7 @@ fn start(
         let mut code;
         loop {
             uncrypted_body =
-                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes);
+                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes).expect("To work");
 
             // handle RLPx message
             if uncrypted_body[0] < 16 {
