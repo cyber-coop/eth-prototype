@@ -2,6 +2,7 @@ use eth_prototype::networks::Network;
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
+use std::error;
 use std::net::Shutdown;
 use std::net::TcpStream;
 use std::process;
@@ -12,7 +13,6 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use std::error;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -197,7 +197,7 @@ fn main() {
                         Ok(_) => {
                             // we are done indexing
                             break 'indexing;
-                        },
+                        }
                         Err(e) => {
                             warn!("Peer failed us; Taking the next in line; (Error : {e})");
                             continue;
@@ -211,7 +211,6 @@ fn main() {
     // need to wait for database thread to finish
     database_handle.join().unwrap();
 }
-
 
 // NOTE: we could have an indexer object that implement the start function instead of having this long list of arguments
 fn start(
@@ -228,8 +227,7 @@ fn start(
      *
      ******************/
     let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
         .secret_bytes()
@@ -269,7 +267,8 @@ fn start(
         return Err("Didn't received ACK when expecting it".into());
     }
 
-    let (_remote_public_key, remote_nonce, ephemeral_shared_secret) = utils::handle_ack_message(&payload, &shared_mac_data, &private_key, &ephemeral_privkey);
+    let (_remote_public_key, remote_nonce, ephemeral_shared_secret) =
+        utils::handle_ack_message(&payload, &shared_mac_data, &private_key, &ephemeral_privkey);
 
     /******************
      *
@@ -308,7 +307,10 @@ fn start(
 
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
-    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).expect(&format!("To be able to decode {}", hex::encode(&uncrypted_body[1..])));
+    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).expect(&format!(
+        "To be able to decode {}",
+        hex::encode(&uncrypted_body[1..])
+    ));
 
     info!("{:#?}", &hello_message);
 
@@ -452,7 +454,8 @@ fn start(
         let mut code;
         loop {
             uncrypted_body =
-                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes).expect("To work");
+                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes)
+                    .expect("To work");
 
             // handle RLPx message
             if uncrypted_body[0] < 16 {

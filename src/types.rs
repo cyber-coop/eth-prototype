@@ -62,9 +62,7 @@ impl Encodable for CapabilityMessage {
 
 impl rlp::Decodable for CapabilityName {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(Self(
-            rlp.as_val()?
-        ))
+        Ok(Self(rlp.as_val()?))
     }
 }
 

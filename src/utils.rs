@@ -8,13 +8,13 @@ use rand_core::{OsRng, RngCore};
 use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
+use std::error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use std::error;
 
 use super::mac;
 
@@ -363,7 +363,7 @@ pub fn read_message(
     stream: &mut std::net::TcpStream,
     ingress_mac: &mut mac::MAC,
     ingress_aes: &mut Aes256Ctr64BE,
-) -> Result<Vec<u8>, Box<dyn error::Error>>{
+) -> Result<Vec<u8>, Box<dyn error::Error>> {
     let mut buf = [0u8; 32];
 
     let mut timeout: u64 = 1000; // 1sec timeout
@@ -374,7 +374,7 @@ pub fn read_message(
         if timeout.is_zero() {
             return Err("Timeout getting message header".into());
         }
-    };
+    }
 
     let next_size = parse_header(&buf.to_vec(), ingress_mac, ingress_aes);
 
@@ -440,7 +440,7 @@ pub fn send_eip8_auth_message(
 }
 
 pub fn read_ack_message(
-    stream: &mut std::net::TcpStream
+    stream: &mut std::net::TcpStream,
 ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error>> {
     let mut buf = [0u8; 2];
     let _size = stream.read_exact(&mut buf)?;
@@ -477,7 +477,6 @@ pub fn handle_ack_message(
 
     return (remote_public_key, remote_nonce, ephemeral_shared_secret);
 }
-
 
 #[cfg(test)]
 mod tests {
