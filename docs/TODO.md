@@ -4,7 +4,7 @@
 - [x] Bigint value in sql not big enought
 - [x] RLP too long error
 - [x] More networks:
-    * [x] ~~Rinkeby~~ Deprecated
+    * [x] ~~Rinkeby~~ Deprecated (We still support it)
     * [x] Sepolia
     * [x] Goerli
     * [x] Ethereum Mainnet
@@ -18,4 +18,4 @@
 - [x] Peer info in the config file instead of hardcoded
 - [x] Generate randomly data that should be genereated randomly
 - [x] Move tests from `main.rs` in their own folder to clear things
-- [ ] Publish image to docker hub. Make it easier to deploy.
+- [x] Publish image to docker hub. Make it easier to deploy.
