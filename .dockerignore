@@ -9,6 +9,7 @@ docs
 .git
 .github
 tests
+contrib
 
 # unused file
 config.toml
