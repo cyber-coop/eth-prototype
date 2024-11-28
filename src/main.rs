@@ -453,10 +453,13 @@ fn start(
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body = match utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes) {
-                Ok(message) => message,
-                Err(_) => { return Err("Fail to read message".into()); }, 
-            };
+            uncrypted_body =
+                match utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes) {
+                    Ok(message) => message,
+                    Err(_) => {
+                        return Err("Fail to read message".into());
+                    }
+                };
 
             // handle RLPx message
             if uncrypted_body[0] < 16 {
