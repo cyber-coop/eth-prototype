@@ -1,5 +1,5 @@
 ##### BUILDER #####
-FROM rust:latest as builder
+FROM rust:latest AS builder
 
 WORKDIR /usr/src/eth-prototype
 COPY . .
@@ -16,7 +16,7 @@ COPY --from=builder /usr/local/cargo/bin/eth-prototype /usr/local/bin/eth-protot
 RUN apt-get update && rm -rf /var/lib/apt/lists/*
 
 # default env
-ENV RUST_LOG "eth_prototype=info"
-ENV NETWORK "ethereum_rinkeby"
+ENV RUST_LOG="eth_prototype=info"
+ENV NETWORK="ethereum_rinkeby"
 
 CMD eth-prototype ${NETWORK}
