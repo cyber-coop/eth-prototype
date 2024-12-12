@@ -13,10 +13,12 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 
-use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
-use eth_prototype::{configs, database, message, networks, types, utils};
+use eth_prototype::{eth, mac, configs, database, message, networks, types, utils};
 
 #[macro_use]
 extern crate log;
@@ -124,30 +126,21 @@ fn main() {
     });
 
     // if we have specified a peer we only use this peer. Otherwise we do peer discovery.
-    match config.peer {
+    let (stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac) = match config.peer {
         Some(peer) => {
-            let result = start(
-                peer.ip,
-                peer.port,
-                peer.remote_id,
-                &network,
-                &mut current_hash,
-                &tx,
-            );
+            match connect(peer.ip, peer.port, peer.remote_id, &network) {
+                Err(_) => {
+                    // We have encountered an error with the given peer. So we exit.
+                    // TODO: we should gracefully handle the database connection shutdown here.
+                    error!("Cannot connect to peer specified in config");
 
-            if let Err(_) = result {
-                // We have encountered an error with the given peer. So we exit.
-                // TODO: we should gracefully handle the database connection shutdown here.
-
-                process::exit(1);
-            };
-        }
+                    process::exit(1);
+                },
+                Ok((stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac)) => (stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac),
+            }
+        },
         None => {
-            /******************
-             *
-             *  Peer Discovery
-             *
-             ******************/
+            // Peer Discovery
 
             let rt = Runtime::new().unwrap();
 
@@ -170,43 +163,55 @@ fn main() {
                 .unwrap();
             });
 
-            'indexing: loop {
+            loop {
                 let target = rand::random();
                 info!("Looking up random target: {}", target);
 
-                let result = rt.block_on(async {
+                let nodes = rt.block_on(async {
                     return node.lookup(target).await;
                 });
 
-                info!("Found {} nodes info", result.len());
+                info!("Found {} nodes info", nodes.len());
 
-                for entry in result {
-                    info!("Found node: {:?}", entry);
 
-                    // start the indexer process
-                    let result = start(
-                        entry.address.to_string(),
-                        entry.tcp_port,
-                        entry.id.0.to_vec(),
-                        &network,
-                        &mut current_hash,
-                        &tx,
-                    );
+                let mut tasks = nodes.into_iter().map(|record| {
+                    rt.spawn(async move {
+                        connect(record.address.to_string(), record.tcp_port, record.id.0.to_vec(), &network)
+                    })
+                }).collect::<FuturesUnordered<JoinHandle<_>>>();
 
-                    match result {
-                        Ok(_) => {
-                            // we are done indexing
-                            break 'indexing;
+                let result = rt.block_on( async {
+                    while let Some(result) = tasks.next().await {
+                        match result.unwrap() {
+                            Ok((stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac)) => {
+                                info!("found a peer!");
+                                return Ok((stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac));
+                            },
+                            Err(err) => {
+                                warn!("{:?}", err);
+                            }
+                            
                         }
-                        Err(e) => {
-                            warn!("Peer failed us; Taking the next in line; (Error : {e})");
-                            continue;
-                        }
-                    };
+                    }
+
+                    Err("No peer found")
+                });
+
+                if let Ok((stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac)) = result {
+                    info!("We found a peer yeah");
+                    
+                    break (stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac);
                 }
+
             }
         }
-    }
+    };
+
+    info!("We have a peer starting indexing");
+
+    start(stream, &mut current_hash, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac, &tx).expect("To work");
+
+    info!("Waiting for database to close");
 
     // need to wait for database thread to finish
     database_handle.join().unwrap();
@@ -214,184 +219,15 @@ fn main() {
 
 // NOTE: we could have an indexer object that implement the start function instead of having this long list of arguments
 fn start(
-    ip: String,
-    tcp_port: u16,
-    remote_id: Vec<u8>,
-    network: &Network,
+    mut stream: TcpStream,
     current_hash: &mut Vec<u8>,
+    their_current_hash: Vec<u8>,
+    mut egress_aes: Arc<Mutex<utils::Aes256Ctr64BE>>,
+    mut egress_mac: Arc<Mutex<mac::MAC>>,
+    mut ingress_aes: utils::Aes256Ctr64BE,
+    mut ingress_mac: mac::MAC,
     tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
-) -> Result<(), Box<dyn error::Error>> {
-    /******************
-     *
-     *  Connect to peer
-     *
-     ******************/
-    let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-
-    let private_key = SecretKey::new(&mut rand::thread_rng())
-        .secret_bytes()
-        .to_vec();
-    let mut nonce = vec![0; 32];
-    rand::thread_rng().fill_bytes(&mut nonce);
-    let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng())
-        .secret_bytes()
-        .to_vec();
-    let pad = vec![0; 100]; // should be generated randomly but we don't really care
-
-    /******************
-     *
-     *  Create Auth message (EIP8 supported)
-     *
-     ******************/
-    info!("Creating EIP8 Auth message");
-    let init_msg =
-        utils::create_auth_eip8(&remote_id, &private_key, &nonce, &ephemeral_privkey, &pad);
-
-    // send the message
-    info!("Sending EIP8 Auth message");
-    utils::send_eip8_auth_message(&init_msg, &mut stream)?;
-
-    /******************
-     *
-     *  Handle Ack
-     *
-     ******************/
-
-    info!("waiting for answer (ACK message)...");
-    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream)?;
-
-    info!("Received Ack");
-    if payload[0] != 0x04 {
-        dbg!(payload[0]);
-        return Err("Didn't received ACK when expecting it".into());
-    }
-
-    let (_remote_public_key, remote_nonce, ephemeral_shared_secret) =
-        utils::handle_ack_message(&payload, &shared_mac_data, &private_key, &ephemeral_privkey);
-
-    /******************
-     *
-     *  Setup Frame
-     *
-     ******************/
-
-    let remote_data = [shared_mac_data, payload].concat();
-    let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
-        remote_nonce,
-        nonce,
-        ephemeral_shared_secret,
-        remote_data,
-        init_msg,
-    );
-    let mut egress_aes = Arc::new(Mutex::new(egress_aes));
-    let mut egress_mac = Arc::new(Mutex::new(egress_mac));
-
-    info!("Frame setup done !");
-
-    info!("Received Ack, waiting for Header");
-
-    /******************
-     *
-     *  Handle HELLO
-     *
-     ******************/
-
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
-
-    if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        // if peer disconnect try next peer
-        return Err("We received a disconnect message".into());
-    }
-
-    // Should be HELLO
-    assert_eq!(0x80, uncrypted_body[0]);
-    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).expect(&format!(
-        "To be able to decode {}",
-        hex::encode(&uncrypted_body[1..])
-    ));
-
-    info!("{:#?}", &hello_message);
-
-    // We need to find the highest eth version it supports
-    let mut version = 0;
-    for capability in hello_message.capabilities {
-        if capability.name.0.to_string() == "eth" {
-            if capability.version > version {
-                version = capability.version;
-            }
-        }
-    }
-
-    /******************
-     *
-     *  Create Hello
-     *
-     ******************/
-
-    info!("Sending HELLO message");
-    let hello = message::create_hello_message(&private_key);
-    utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes);
-
-    /******************
-     *
-     *  Send STATUS message
-     *
-     ******************/
-
-    info!("Sending STATUS message");
-
-    let genesis_hash = network.genesis_hash.to_vec();
-    let head_td = 0;
-    let fork_id = network.fork_id.to_vec();
-    let network_id = network.network_id;
-
-    let status = eth::create_status_message(
-        &version,
-        &genesis_hash,
-        &genesis_hash,
-        &head_td,
-        &fork_id,
-        &network_id,
-    );
-    utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes);
-
-    /******************
-     *
-     *  Handle STATUS message
-     *
-     ******************/
-
-    info!("Handling STATUS message");
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
-    if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        return Err("We received a disconnect message".into());
-    }
-    let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
-
-    // if not on the same network we disconnect and take the next peer
-    if network_id != network.network_id {
-        stream.shutdown(Shutdown::Both).unwrap_or_default();
-        return Err(format!("Wrong network {} != {}", network.network_id, network_id).into());
-    }
-
-    /******************
-     *
-     *  Send UPGRADE STATUS message (binance only)
-     *
-     ******************/
-    if *network == networks::Network::BINANCE_MAINNET {
-        let upgrade_status = eth::create_upgrade_status_message();
-        utils::send_message(
-            upgrade_status,
-            &mut stream,
-            &mut egress_mac,
-            &mut egress_aes,
-        );
-    }
-
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         *current_hash = their_current_hash;
@@ -633,4 +469,179 @@ fn start(
     }
 
     Ok(())
+}
+
+fn connect(ip: String, tcp_port: u16, remote_id: Vec<u8>, network: &Network) -> Result<(TcpStream, Vec<u8>, Arc<Mutex<utils::Aes256Ctr64BE>>, Arc<Mutex<mac::MAC>>, utils::Aes256Ctr64BE, mac::MAC), Box<dyn error::Error + Send + Sync>> {
+    /******************
+     *
+     *  Connect to peer
+     *
+     ******************/
+    let mut stream = TcpStream::connect(format!("{}:{}", ip, tcp_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+
+    let private_key = SecretKey::new(&mut rand::thread_rng())
+        .secret_bytes()
+        .to_vec();
+    let mut nonce = vec![0; 32];
+    rand::thread_rng().fill_bytes(&mut nonce);
+    let ephemeral_privkey = SecretKey::new(&mut rand::thread_rng())
+        .secret_bytes()
+        .to_vec();
+    let pad = vec![0; 100]; // should be generated randomly but we don't really care
+
+    /******************
+     *
+     *  Create Auth message (EIP8 supported)
+     *
+     ******************/
+    info!("Creating EIP8 Auth message");
+    let init_msg =
+        utils::create_auth_eip8(&remote_id, &private_key, &nonce, &ephemeral_privkey, &pad);
+
+    // send the message
+    info!("Sending EIP8 Auth message");
+    utils::send_eip8_auth_message(&init_msg, &mut stream)?;
+
+    /******************
+     *
+     *  Handle Ack
+     *
+     ******************/
+
+    info!("waiting for answer (ACK message)...");
+    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream)?;
+
+    info!("Received Ack");
+    if payload[0] != 0x04 {
+        dbg!(payload[0]);
+        return Err("Didn't received ACK when expecting it".into());
+    }
+
+    let (_remote_public_key, remote_nonce, ephemeral_shared_secret) =
+        utils::handle_ack_message(&payload, &shared_mac_data, &private_key, &ephemeral_privkey);
+
+    /******************
+     *
+     *  Setup Frame
+     *
+     ******************/
+
+    let remote_data = [shared_mac_data, payload].concat();
+    let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
+        remote_nonce,
+        nonce,
+        ephemeral_shared_secret,
+        remote_data,
+        init_msg,
+    );
+    let mut egress_aes = Arc::new(Mutex::new(egress_aes));
+    let mut egress_mac = Arc::new(Mutex::new(egress_mac));
+
+    info!("Frame setup done !");
+
+    info!("Received Ack, waiting for Header");
+
+    /******************
+     *
+     *  Handle HELLO
+     *
+     ******************/
+
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
+
+    if uncrypted_body[0] == 0x01 {
+        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
+        // if peer disconnect try next peer
+        return Err("We received a disconnect message".into());
+    }
+
+    // Should be HELLO
+    assert_eq!(0x80, uncrypted_body[0]);
+    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).expect(&format!(
+        "To be able to decode {}",
+        hex::encode(&uncrypted_body[1..])
+    ));
+
+    info!("{:#?}", &hello_message);
+
+    // We need to find the highest eth version it supports
+    let mut version = 0;
+    for capability in hello_message.capabilities {
+        if capability.name.0.to_string() == "eth" {
+            if capability.version > version {
+                version = capability.version;
+            }
+        }
+    }
+
+    /******************
+     *
+     *  Create Hello
+     *
+     ******************/
+
+    info!("Sending HELLO message");
+    let hello = message::create_hello_message(&private_key);
+    utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes);
+
+    /******************
+     *
+     *  Send STATUS message
+     *
+     ******************/
+
+    info!("Sending STATUS message");
+
+    let genesis_hash = network.genesis_hash.to_vec();
+    let head_td = 0;
+    let fork_id = network.fork_id.to_vec();
+    let network_id = network.network_id;
+
+    let status = eth::create_status_message(
+        &version,
+        &genesis_hash,
+        &genesis_hash,
+        &head_td,
+        &fork_id,
+        &network_id,
+    );
+    utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes);
+
+    /******************
+     *
+     *  Handle STATUS message
+     *
+     ******************/
+
+    info!("Handling STATUS message");
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
+    if uncrypted_body[0] == 0x01 {
+        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
+        return Err("We received a disconnect message".into());
+    }
+    let (their_current_hash, network_id) = eth::parse_status_message(uncrypted_body[1..].to_vec());
+
+    // if not on the same network we disconnect and take the next peer
+    if network_id != network.network_id {
+        stream.shutdown(Shutdown::Both).unwrap_or_default();
+        return Err(format!("Wrong network {} != {}", network.network_id, network_id).into());
+    }
+
+    /******************
+     *
+     *  Send UPGRADE STATUS message (binance only)
+     *
+     ******************/
+    if *network == networks::Network::BINANCE_MAINNET {
+        let upgrade_status = eth::create_upgrade_status_message();
+        utils::send_message(
+            upgrade_status,
+            &mut stream,
+            &mut egress_mac,
+            &mut egress_aes,
+        );
+    }
+
+    Ok((stream, their_current_hash, egress_aes, egress_mac, ingress_aes, ingress_mac))
 }

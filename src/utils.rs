@@ -363,7 +363,7 @@ pub fn read_message(
     stream: &mut std::net::TcpStream,
     ingress_mac: &mut mac::MAC,
     ingress_aes: &mut Aes256Ctr64BE,
-) -> Result<Vec<u8>, Box<dyn error::Error>> {
+) -> Result<Vec<u8>, Box<dyn error::Error + Sync + Send>> {
     let mut buf = [0u8; 32];
 
     let mut timeout: u64 = 1000; // 1sec timeout
@@ -432,7 +432,7 @@ pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
 pub fn send_eip8_auth_message(
     msg: &Vec<u8>,
     stream: &mut std::net::TcpStream,
-) -> Result<(), Box<dyn error::Error>> {
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     stream.write(&msg)?;
     stream.flush()?;
 
@@ -441,7 +441,7 @@ pub fn send_eip8_auth_message(
 
 pub fn read_ack_message(
     stream: &mut std::net::TcpStream,
-) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error>> {
+) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error + Send + Sync>> {
     let mut buf = [0u8; 2];
     let _size = stream.read_exact(&mut buf)?;
 
