@@ -50,11 +50,8 @@ pub fn parse_status_message(payload: Vec<u8>) -> (Vec<u8>, u32) {
     assert!(r.is_list());
 
     let _version: u16 = r.at(0).unwrap().as_val().unwrap();
-    let network_id: u32 = r.at(1).unwrap().as_val().expect(&format!(
-        "To fit into a u32 struct : {}",
-        hex::encode(r.at(1).unwrap().as_raw())
-    ));
-    // let td: u16 = r.at(2).unwrap().as_val().unwrap();
+    let network_id: u32 = r.at(1).unwrap().as_val().unwrap_or(0); // some network_id are bigger than u32 (e.g: 8606f409d6f102) so we put 0
+                                                                  // let td: u16 = r.at(2).unwrap().as_val().unwrap();
     let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
     let _genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
 
