@@ -4,7 +4,7 @@ user = "postgres"
 password = "wow"
 dbname = "blockchains"
 
-# Mainnet (Optional)
+# Mainnet
 [peer]
 ip = "127.0.0.1"
 port = 30303
