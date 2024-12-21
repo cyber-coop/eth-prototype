@@ -1,9 +1,6 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
-use std::io::prelude::*;
-use std::io::Read;
 use std::net::TcpStream;
 use std::process;
 use std::sync::mpsc::{channel, sync_channel};

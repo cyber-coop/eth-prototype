@@ -1,4 +1,3 @@
-use rlp::Rlp;
 use sha3::{Digest, Keccak256};
 
 use crate::message::{parse_transaction, util_parse_withdrawal};

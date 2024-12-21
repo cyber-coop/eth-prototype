@@ -2,7 +2,6 @@ use crate::types::Withdrawal;
 use crate::types::{AccessList, Hash};
 use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
 use crate::utils;
-use arrayvec::ArrayString;
 use num::BigUint;
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 use sha3::{Digest, Keccak256};
@@ -426,15 +425,14 @@ pub fn create_hello_message(private_key: &Vec<u8>) -> Vec<u8> {
         capabilities: vec![
             //CapabilityMessage{ name: CapabilityName(ArrayString::from("eth").unwrap()), version: 66 },
             CapabilityMessage {
-                name: CapabilityName(ArrayString::from("eth").unwrap()),
+                name: CapabilityName("eth".to_string()),
                 version: 67,
             },
             CapabilityMessage {
-                name: CapabilityName(ArrayString::from("eth").unwrap()),
+                name: CapabilityName("eth".to_string()),
                 version: 68,
             },
         ],
-        // capabilities: vec![types::CapabilityMessage{ name: types::CapabilityName(ArrayString::from("les").unwrap()), version: 4 }],
         port: 0,
         id: primitive_types::H512::from_slice(
             &secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
