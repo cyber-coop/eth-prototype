@@ -7,6 +7,7 @@ use rand_core::{OsRng, RngCore};
 use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
+use std::error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
@@ -426,6 +427,55 @@ pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
     let mut contents = String::new();
     let _ = f.read_to_string(&mut contents);
     postgres_client.batch_execute(&contents).unwrap();
+}
+
+pub fn send_eip8_auth_message(
+    msg: &Vec<u8>,
+    stream: &mut std::net::TcpStream,
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
+    stream.write(&msg)?;
+    stream.flush()?;
+
+    Ok(())
+}
+
+pub fn read_ack_message(
+    stream: &mut std::net::TcpStream,
+) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error + Send + Sync>> {
+    let mut buf = [0u8; 2];
+    let _size = stream.read_exact(&mut buf)?;
+
+    let size_expected = buf.as_slice().read_u16::<BigEndian>().unwrap() as usize;
+    let shared_mac_data = &buf[0..2];
+
+    let mut payload = vec![0u8; size_expected.into()];
+    let size = stream.read(&mut payload)?;
+
+    // TODO: better handle this to return an error and have a timeout
+    assert_eq!(size, size_expected);
+
+    Ok((payload, shared_mac_data.to_vec()))
+}
+
+pub fn handle_ack_message(
+    payload: &Vec<u8>,
+    shared_mac_data: &Vec<u8>,
+    private_key: &Vec<u8>,
+    ephemeral_privkey: &Vec<u8>,
+) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let decrypted = decrypt_message(payload, shared_mac_data, private_key);
+
+    // decode RPL data
+    let rlp = rlp::Rlp::new(&decrypted);
+    let mut rlp = rlp.into_iter();
+
+    // id to pubkey
+    let remote_public_key: Vec<u8> = [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
+    let remote_nonce: Vec<u8> = rlp.next().unwrap().as_val().unwrap();
+
+    let ephemeral_shared_secret = ecdh_x(&remote_public_key, ephemeral_privkey);
+
+    return (remote_public_key, remote_nonce, ephemeral_shared_secret);
 }
 
 #[cfg(test)]

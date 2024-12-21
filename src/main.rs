@@ -1,9 +1,6 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
-use std::io::prelude::*;
-use std::io::Read;
 use std::net::TcpStream;
 use std::process;
 use std::sync::mpsc::{channel, sync_channel};
@@ -12,7 +9,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use eth_prototype::protocols::eth;
+use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
 use eth_prototype::{configs, database, message, networks, types, utils};
 
@@ -120,23 +117,10 @@ fn main() {
 
     // send the message
     info!("Sending EIP8 Auth message");
-    stream.write(&init_msg).unwrap();
-    stream.flush().unwrap();
+    utils::send_eip8_auth_message(&init_msg, &mut stream).unwrap();
 
-    info!("waiting for answer...");
-    let mut buf = [0u8; 2];
-    let size = stream.read(&mut buf).unwrap();
-
-    // We should have read some bytes
-    assert_ne!(size, 0);
-
-    let size_expected = buf.as_slice().read_u16::<BigEndian>().unwrap() as usize;
-    let shared_mac_data = &buf[0..2];
-
-    let mut payload = vec![0u8; size_expected.into()];
-    let size = stream.read(&mut payload).unwrap();
-
-    assert_eq!(size, size_expected);
+    info!("waiting for answer... (ACK message)");
+    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream).unwrap();
 
     /******************
      *
@@ -145,18 +129,14 @@ fn main() {
      ******************/
 
     info!("ACK message received");
-    let decrypted =
-        utils::decrypt_message(&payload.to_vec(), &shared_mac_data.to_vec(), &private_key);
+    info!("Received Ack");
+    if payload[0] != 0x04 {
+        dbg!(payload[0]);
+        panic!("Didn't received ACK when expecting it");
+    }
 
-    // decode RPL data
-    let rlp = rlp::Rlp::new(&decrypted);
-    let mut rlp = rlp.into_iter();
-
-    // id to pubkey
-    let remote_public_key: Vec<u8> = [vec![0x04], rlp.next().unwrap().as_val().unwrap()].concat();
-    let remote_nonce: Vec<u8> = rlp.next().unwrap().as_val().unwrap();
-
-    let ephemeral_shared_secret = utils::ecdh_x(&remote_public_key, &ephemeral_privkey);
+    let (_remote_public_key, remote_nonce, ephemeral_shared_secret) =
+        utils::handle_ack_message(&payload, &shared_mac_data, &private_key, &ephemeral_privkey);
 
     /******************
      *
@@ -164,7 +144,7 @@ fn main() {
      *
      ******************/
 
-    let remote_data = [shared_mac_data, &payload].concat();
+    let remote_data = [shared_mac_data, payload].concat();
     let (mut ingress_aes, mut ingress_mac, egress_aes, egress_mac) = utils::setup_frame(
         remote_nonce,
         nonce,

@@ -1,4 +1,3 @@
-use arrayvec::ArrayString;
 use num::BigUint;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use serde::Serialize;
@@ -18,8 +17,8 @@ pub struct CapabilityMessage {
     pub version: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct CapabilityName(pub ArrayString<[u8; 4]>);
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CapabilityName(pub String);
 
 impl Decodable for HelloMessage {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
@@ -63,13 +62,7 @@ impl Encodable for CapabilityMessage {
 
 impl rlp::Decodable for CapabilityName {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(Self(
-            ArrayString::from(
-                std::str::from_utf8(rlp.data()?)
-                    .map_err(|_| DecoderError::Custom("should be a UTF-8 string"))?,
-            )
-            .map_err(|_| DecoderError::RlpIsTooBig)?,
-        ))
+        Ok(Self(rlp.as_val()?))
     }
 }
 

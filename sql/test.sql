@@ -1,4 +1,4 @@
--- Ethereum Rinkeby
+-- Test
 
 --- Quick Analyze
 
@@ -14,6 +14,8 @@ ALTER TABLE test.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (canonical_has
 
 --- Create Index
 ---- We use B-Tree indexing because we want to do more inserts of new transactions later and it is supposedly faster 
+CREATE INDEX i_toaddress ON test.transactions using btree (toaddress);
 CREATE INDEX i_blocknumber ON test.blocks using btree (number);
 CREATE INDEX i_txid ON test.transactions using btree (txid);
+CREATE INDEX i_block ON test.transactions using btree (block);
 CREATE INDEX i_ommerphash ON test.ommers using btree (canonical_hash);
