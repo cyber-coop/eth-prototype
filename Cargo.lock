@@ -810,7 +810,6 @@ dependencies = [
  "postgres",
  "primitive-types 0.12.2",
  "rand_core 0.6.4",
- "reqwest",
  "rlp",
  "secp256k1 0.20.3",
  "secp256k1 0.28.1",

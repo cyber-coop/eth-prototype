@@ -7,13 +7,13 @@ use rand_core::{OsRng, RngCore};
 use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
+use std::error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use std::error;
 
 use super::mac;
 
@@ -477,7 +477,6 @@ pub fn handle_ack_message(
 
     return (remote_public_key, remote_nonce, ephemeral_shared_secret);
 }
-
 
 #[cfg(test)]
 mod tests {
