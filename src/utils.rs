@@ -451,9 +451,7 @@ pub fn read_ack_message(
     let mut payload = vec![0u8; size_expected.into()];
     let size = stream.read(&mut payload)?;
 
-    if size != size_expected {
-        return Err("Fail to get complete ack message".into());
-    }
+    // TODO: better handle this to return an error and have a timeout
     assert_eq!(size, size_expected);
 
     Ok((payload, shared_mac_data.to_vec()))

@@ -449,17 +449,13 @@ fn start(
 
     let (tx_tcp, rx_tcp) = channel();
 
-    let tcp_handle = thread::spawn(move || -> Result<(), Box<dyn error::Error + Send + Sync>> {
+    let _tcp_handle = thread::spawn(move || {
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
             uncrypted_body =
-                match utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes) {
-                    Ok(message) => message,
-                    Err(_) => {
-                        return Err("Fail to read message".into());
-                    }
-                };
+                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes)
+                    .expect("To work");
 
             // handle RLPx message
             if uncrypted_body[0] < 16 {
@@ -484,8 +480,7 @@ fn start(
                     let mut dec = snap::raw::Decoder::new();
                     let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
 
-                    warn!("Disconnected ! {}", hex::encode(&message));
-                    return Err("Peer disconnected".into());
+                    panic!("Disconnected ! {}", hex::encode(&message))
                 }
 
                 continue;
@@ -545,14 +540,6 @@ fn start(
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            if tcp_handle.is_finished() {
-                let result = tcp_handle.join();
-                if result.is_err() {
-                    return Err("Fail to download blocks from this peer".into());
-                } else {
-                    unreachable!("this should never happens");
-                }
-            };
             uncrypted_body = rx_tcp.recv().unwrap();
 
             code = uncrypted_body[0] - 16;
@@ -604,14 +591,6 @@ fn start(
             let mut uncrypted_body: Vec<u8>;
             let mut code;
             loop {
-                if tcp_handle.is_finished() {
-                    let result = tcp_handle.join();
-                    if result.is_err() {
-                        return Err("Fail to download blocks from this peer".into());
-                    } else {
-                        unreachable!("this should never happens");
-                    }
-                };
                 uncrypted_body = rx_tcp.recv().unwrap();
 
                 code = uncrypted_body[0] - 16;
