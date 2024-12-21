@@ -3,7 +3,7 @@ pub mod database;
 pub mod mac;
 pub mod message;
 pub mod networks;
-pub mod protocols;
+pub mod eth;
 pub mod types;
 pub mod utils;
 
