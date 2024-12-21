@@ -857,6 +857,7 @@ name = "eth-prototype"
 version = "0.1.0"
 dependencies = [
  "aes 0.8.3",
+ "arrayvec 0.5.2",
  "byteorder",
  "chrono",
  "ctr 0.9.2",
