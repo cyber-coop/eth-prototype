@@ -1,6 +1,9 @@
+use eth_prototype::configs::Peer;
+use eth_prototype::networks::Network;
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
+use std::error;
 use std::net::TcpStream;
 use std::process;
 use std::sync::mpsc::{channel, sync_channel};
@@ -8,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use std::sync::mpsc::SyncSender;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -84,17 +88,67 @@ fn main() {
         info!("We are starting at hash {}", hex::encode(&current_hash));
     }
 
+    /********************
+     *
+     *  Start database thread
+     *
+     ********************/
+
+    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
+    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
+
+    let database_handle = thread::spawn(move || {
+        info!("Starting database thread");
+
+        // Connect to database
+        let mut postgres_client =
+            postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
+
+        // while recv save blocks in database
+        loop {
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                rx.recv().unwrap();
+            database::save_blocks(&blocks, &network_arg, &mut postgres_client);
+
+            // We are synced
+            if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
+                info!("We are synced !");
+                // Open, read and execute SQL scripts at the end of sync
+                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
+                break;
+            }
+        }
+
+        info!("Closing thread!");
+    });
+
+    for peer in config.peers {
+        match run(peer, network, &mut current_hash, &tx) {
+            Ok(()) => {
+                // We are done
+                break;
+            }
+            Err(_) => {
+                // next peer
+                continue;
+            }
+        };
+    }
+    // need to wait for database thread to finish
+    database_handle.join().unwrap();
+}
+
+fn run(peer: Peer, network: Network, current_hash: &mut Vec<u8>, tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,) -> Result<(), Box<dyn error::Error>> {
     /******************
      *
      *  Connect to peer
      *
      ******************/
-    let mut stream =
-        TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
+    let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
-    let remote_id = config.peer.remote_id;
+    let remote_id = peer.remote_id.clone();
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
         .secret_bytes()
@@ -240,7 +294,7 @@ fn main() {
      *  Send UPGRADE STATUS message (binance only)
      *
      ******************/
-    if network_arg == "binance_mainnet" {
+    if network == networks::Network::BINANCE_MAINNET {
         let upgrade_status = eth::create_upgrade_status_message();
         utils::send_message(
             upgrade_status,
@@ -252,7 +306,7 @@ fn main() {
 
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
-        current_hash = their_current_hash;
+        *current_hash = their_current_hash;
 
         /******************
          *
@@ -288,42 +342,8 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
     }
-
-    /********************
-     *
-     *  Start database thread
-     *
-     ********************/
-
-    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
-    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
-
-    let database_handle = thread::spawn(move || {
-        info!("Starting database thread");
-
-        // Connect to database
-        let mut postgres_client =
-            postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
-
-        // while recv save blocks in database
-        loop {
-            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-                rx.recv().unwrap();
-            database::save_blocks(&blocks, &network_arg, &mut postgres_client);
-
-            // We are synced
-            if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
-                info!("We are synced !");
-                // Open, read and execute SQL scripts at the end of sync
-                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
-                break;
-            }
-        }
-
-        info!("Closing thread!");
-    });
 
     /****************************
      *
@@ -440,7 +460,7 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
 
         /******************
          *
@@ -515,10 +535,8 @@ fn main() {
         if current_height == 0 {
             info!("Data fully synced");
 
-            // need to wait for database thread to finish
-            database_handle.join().unwrap();
-
             break;
         }
     }
+    Ok(())
 }

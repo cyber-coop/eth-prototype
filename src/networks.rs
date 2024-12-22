@@ -1,6 +1,7 @@
 use std::error::Error;
 
 // Networks
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Network {
     pub genesis_hash: [u8; 32],
     pub head_td: u64,
