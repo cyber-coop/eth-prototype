@@ -1,8 +1,12 @@
+use eth_prototype::configs::Peer;
+use eth_prototype::networks::Network;
 use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
+use std::error;
 use std::net::TcpStream;
 use std::process;
+use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -81,20 +85,81 @@ fn main() {
             Err(_) => {}
         }
 
+        if current_hash
+            == hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap()
+        {
+            info!("We are already synced completly! Exiting indexer");
+
+            process::exit(0);
+        }
+
         info!("We are starting at hash {}", hex::encode(&current_hash));
     }
 
+    /********************
+     *
+     *  Start database thread
+     *
+     ********************/
+
+    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
+    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
+
+    let database_handle = thread::spawn(move || {
+        info!("Starting database thread");
+
+        // Connect to database
+        let mut postgres_client =
+            postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
+
+        // while recv save blocks in database
+        loop {
+            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                rx.recv().unwrap();
+            database::save_blocks(&blocks, &network_arg, &mut postgres_client);
+
+            // We are synced
+            if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
+                info!("We are synced !");
+                // Open, read and execute SQL scripts at the end of sync
+                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
+                break;
+            }
+        }
+
+        info!("Closing thread!");
+    });
+
+    for peer in config.peers {
+        match run(peer, network, &mut current_hash, &tx) {
+            Ok(()) => {
+                // We are done
+                break;
+            }
+            Err(_) => {
+                // next peer
+                continue;
+            }
+        };
+    }
+    // need to wait for database thread to finish
+    database_handle.join().unwrap();
+}
+
+fn run(
+    peer: Peer,
+    network: Network,
+    current_hash: &mut Vec<u8>,
+    tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
+) -> Result<(), Box<dyn error::Error>> {
     /******************
      *
      *  Connect to peer
      *
      ******************/
-    let mut stream =
-        TcpStream::connect(format!("{}:{}", config.peer.ip, config.peer.port)).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .unwrap();
-    let remote_id = config.peer.remote_id;
+    let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
         .secret_bytes()
@@ -112,15 +177,20 @@ fn main() {
      *
      ******************/
     info!("Creating EIP8 Auth message");
-    let init_msg =
-        utils::create_auth_eip8(&remote_id, &private_key, &nonce, &ephemeral_privkey, &pad);
+    let init_msg = utils::create_auth_eip8(
+        &peer.remote_id,
+        &private_key,
+        &nonce,
+        &ephemeral_privkey,
+        &pad,
+    );
 
     // send the message
     info!("Sending EIP8 Auth message");
-    utils::send_eip8_auth_message(&init_msg, &mut stream).unwrap();
+    utils::send_eip8_auth_message(&init_msg, &mut stream)?;
 
     info!("waiting for answer... (ACK message)");
-    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream).unwrap();
+    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream)?;
 
     /******************
      *
@@ -165,11 +235,12 @@ fn main() {
      *
      ******************/
 
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
 
     if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        process::exit(1);
+        warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
+
+        return Err("Disconnected peer".into());
     }
 
     // Should be HELLO
@@ -196,7 +267,7 @@ fn main() {
 
     info!("Sending HELLO message");
     let hello = message::create_hello_message(&private_key);
-    utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes);
+    utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes)?;
 
     /******************
      *
@@ -219,7 +290,7 @@ fn main() {
         &fork_id,
         &network_id,
     );
-    utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes);
+    utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes)?;
 
     /******************
      *
@@ -228,10 +299,11 @@ fn main() {
      ******************/
 
     info!("Handling STATUS message");
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
     if uncrypted_body[0] == 0x01 {
-        info!("Disconnect message : {}", hex::encode(&uncrypted_body));
-        process::exit(1);
+        warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
+
+        return Err("Disconnected peer".into());
     }
     let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
 
@@ -240,19 +312,19 @@ fn main() {
      *  Send UPGRADE STATUS message (binance only)
      *
      ******************/
-    if network_arg == "binance_mainnet" {
+    if network == networks::Network::BINANCE_MAINNET {
         let upgrade_status = eth::create_upgrade_status_message();
         utils::send_message(
             upgrade_status,
             &mut stream,
             &mut egress_mac,
             &mut egress_aes,
-        );
+        )?;
     }
 
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
-        current_hash = their_current_hash;
+        *current_hash = their_current_hash;
 
         /******************
          *
@@ -268,12 +340,12 @@ fn main() {
             &mut stream,
             &mut egress_mac,
             &mut egress_aes,
-        );
+        )?;
 
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes);
+            uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
 
             if uncrypted_body[0] > 16 {
                 code = uncrypted_body[0] - 16;
@@ -288,42 +360,8 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
     }
-
-    /********************
-     *
-     *  Start database thread
-     *
-     ********************/
-
-    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
-    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
-
-    let database_handle = thread::spawn(move || {
-        info!("Starting database thread");
-
-        // Connect to database
-        let mut postgres_client =
-            postgres::Client::connect(&database_params, postgres::NoTls).unwrap();
-
-        // while recv save blocks in database
-        loop {
-            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-                rx.recv().unwrap();
-            database::save_blocks(&blocks, &network_arg, &mut postgres_client);
-
-            // We are synced
-            if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
-                info!("We are synced !");
-                // Open, read and execute SQL scripts at the end of sync
-                utils::open_exec_sql_file(&network_arg, &mut postgres_client);
-                break;
-            }
-        }
-
-        info!("Closing thread!");
-    });
 
     /****************************
      *
@@ -342,7 +380,8 @@ fn main() {
         let mut code;
         loop {
             uncrypted_body =
-                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes);
+                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes)
+                    .unwrap();
 
             // handle RLPx message
             if uncrypted_body[0] < 16 {
@@ -359,7 +398,8 @@ fn main() {
                         &mut thread_stream,
                         &thread_egress_mac,
                         &thread_egress_aes,
-                    );
+                    )
+                    .unwrap();
                 }
 
                 if code == 1 {
@@ -367,7 +407,9 @@ fn main() {
                     let mut dec = snap::raw::Decoder::new();
                     let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
 
-                    panic!("Disconnected ! {}", hex::encode(&message))
+                    warn!("Disconnected ! {}", hex::encode(&message));
+
+                    return;
                 }
 
                 continue;
@@ -393,7 +435,8 @@ fn main() {
                     &mut thread_stream,
                     &thread_egress_mac,
                     &thread_egress_aes,
-                );
+                )
+                .unwrap();
             }
 
             tx_tcp.send(uncrypted_body).unwrap();
@@ -415,7 +458,7 @@ fn main() {
             &mut stream,
             &mut egress_mac,
             &mut egress_aes,
-        );
+        )?;
 
         /******************
          *
@@ -427,7 +470,7 @@ fn main() {
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body = rx_tcp.recv().unwrap();
+            uncrypted_body = rx_tcp.recv()?;
 
             code = uncrypted_body[0] - 16;
             if code == 4 {
@@ -440,7 +483,7 @@ fn main() {
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
 
         /******************
          *
@@ -463,7 +506,7 @@ fn main() {
                 &mut stream,
                 &mut egress_mac,
                 &mut egress_aes,
-            );
+            )?;
 
             /******************
              *
@@ -478,7 +521,7 @@ fn main() {
             let mut uncrypted_body: Vec<u8>;
             let mut code;
             loop {
-                uncrypted_body = rx_tcp.recv().unwrap();
+                uncrypted_body = rx_tcp.recv()?;
 
                 code = uncrypted_body[0] - 16;
                 if code == 6 {
@@ -509,16 +552,14 @@ fn main() {
 
         // send blocks to the other thread to save in database
         if blocks.len() > 0 {
-            tx.send(blocks).unwrap();
+            tx.send(blocks)?;
         }
 
         if current_height == 0 {
             info!("Data fully synced");
 
-            // need to wait for database thread to finish
-            database_handle.join().unwrap();
-
             break;
         }
     }
+    Ok(())
 }

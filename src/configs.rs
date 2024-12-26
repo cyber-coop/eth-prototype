@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use toml;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DatabaseConfig {
     pub host: String,
     pub user: String,
@@ -11,7 +11,7 @@ pub struct DatabaseConfig {
     pub dbname: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Peer {
     pub ip: String,
     pub port: u32,
@@ -19,15 +19,15 @@ pub struct Peer {
     pub remote_id: Vec<u8>, // [u8; 64]
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct IndexerConfig {
     pub queue_size: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     pub database: DatabaseConfig,
-    pub peer: Peer,
+    pub peers: Vec<Peer>,
     pub indexer: IndexerConfig,
 }
 

@@ -2,6 +2,7 @@ use aes::cipher::{KeyIvInit, StreamCipher};
 use byteorder::ByteOrder;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use hmac_sha256::{Hash, HMAC};
+use num::Zero;
 use postgres::Client;
 use rand_core::{OsRng, RngCore};
 use rlp::RlpStream;
@@ -345,36 +346,39 @@ pub fn send_message(
     stream: &mut std::net::TcpStream,
     egress_mac: &Arc<Mutex<mac::MAC>>,
     egress_aes: &Arc<Mutex<Aes256Ctr64BE>>,
-) {
-    let mut egress_aes = egress_aes.lock().unwrap();
+) -> Result<(), Box<dyn error::Error>> {
+    let mut egress_aes = egress_aes.lock().unwrap(); // TODO: fix this unwrap here for the lock
     let mut egress_mac = egress_mac.lock().unwrap();
 
     let header = create_header(msg.len(), egress_mac.borrow_mut(), egress_aes.borrow_mut());
 
-    stream.write(&header).unwrap();
-    stream.flush().unwrap();
+    stream.write(&header)?;
+    stream.flush()?;
 
     let body = create_body(msg, egress_mac.borrow_mut(), egress_aes.borrow_mut());
 
-    stream.write(&body).unwrap();
-    stream.flush().unwrap();
+    stream.write(&body)?;
+    stream.flush()?;
+
+    Ok(())
 }
 
 pub fn read_message(
     stream: &mut std::net::TcpStream,
     ingress_mac: &mut mac::MAC,
     ingress_aes: &mut Aes256Ctr64BE,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, Box<dyn error::Error>> {
     let mut buf = [0u8; 32];
-    let mut size = stream.read(&mut buf).unwrap();
 
-    while size == 0 {
-        trace!("message size was 0");
+    let mut timeout: u64 = 1000; // 1sec timeout
+    while let Err(_) = stream.read_exact(&mut buf) {
         thread::sleep(Duration::from_millis(READ_MESSAGE_TIME_MS));
-        size = stream.read(&mut buf).unwrap();
-    }
+        timeout -= READ_MESSAGE_TIME_MS;
 
-    assert_eq!(size, 32);
+        if timeout.is_zero() {
+            return Err("Timeout getting message header".into());
+        }
+    }
 
     let next_size = parse_header(&buf.to_vec(), ingress_mac, ingress_aes);
 
@@ -385,7 +389,7 @@ pub fn read_message(
     // we have this loop to be sure we have received the complete payload
     while body.len() < body_size {
         let mut buf: Vec<u8> = vec![0; body_size - body.len()];
-        let l = stream.read(&mut buf).unwrap();
+        let l = stream.read(&mut buf)?;
 
         body.extend(&buf[0..l]);
         if body.len() < body_size {
@@ -402,9 +406,8 @@ pub fn read_message(
 
     let uncrypted_body = parse_body(&body, ingress_mac, ingress_aes, next_size);
 
-    return uncrypted_body;
+    Ok(uncrypted_body)
 }
-
 pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
     let mut rlp_encoded = RlpStream::new();
     rlp_encoded.begin_unbounded_list();
@@ -432,7 +435,7 @@ pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
 pub fn send_eip8_auth_message(
     msg: &Vec<u8>,
     stream: &mut std::net::TcpStream,
-) -> Result<(), Box<dyn error::Error + Send + Sync>> {
+) -> Result<(), Box<dyn error::Error>> {
     stream.write(&msg)?;
     stream.flush()?;
 
@@ -441,7 +444,7 @@ pub fn send_eip8_auth_message(
 
 pub fn read_ack_message(
     stream: &mut std::net::TcpStream,
-) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error + Send + Sync>> {
+) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error>> {
     let mut buf = [0u8; 2];
     let _size = stream.read_exact(&mut buf)?;
 
