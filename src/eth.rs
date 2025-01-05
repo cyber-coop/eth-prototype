@@ -50,10 +50,17 @@ pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
     assert!(r.is_list());
 
     let _version: u16 = r.at(0).unwrap().as_val().unwrap();
-    // let _network_id: u16 = r.at(1).unwrap().as_val().unwrap();
-    // let td: u16 = r.at(2).unwrap().as_val().unwrap();
+    let _network_id: u64 = r.at(1).unwrap().as_val().unwrap();
+    // let _td: u16 = r.at(2).unwrap().as_val().unwrap();
     let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
     let _genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
+
+    if r.item_count().unwrap() == 6 {
+        let forkidrlp = r.at(5).unwrap();
+        assert!(forkidrlp.is_list());
+        let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
+        let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+    }
 
     return blockhash;
 }
