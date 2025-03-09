@@ -514,10 +514,6 @@ fn run(
              *
              ******************/
 
-            info!(
-                "Handling BlockBodies message ({}/{BLOCK_NUM} block bodies received)",
-                transactions.len()
-            );
             let mut uncrypted_body: Vec<u8>;
             let mut code;
             loop {
@@ -532,6 +528,12 @@ fn run(
 
             let tmp_txs = eth::parse_block_bodies(uncrypted_body[1..].to_vec());
             transactions.extend(tmp_txs);
+
+            info!(
+                "Handling BlockBodies message ({}/{} block bodies received)",
+                transactions.len(),
+                hashes.len()
+            );
         }
 
         let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
