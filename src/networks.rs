@@ -87,6 +87,27 @@ impl Network {
         network_id: 0x38,
     };
 
+    // Story Odyssey
+    pub const STORY_ODYSSEY: Network = Network {
+        // Is it the right genesis hash ? Because it is not the one in the project https://github.com/piplabs/story-geth/blob/main/params/config.go#L34
+        genesis_hash: [
+            14,224,10,84,168,96,105,76,246,122,193,51,252,87,53,207,150,84,12,183,145,250,85,240,134,38,186,68,174,179,255,121
+        ],
+        head_td: 131072,
+        fork_id: [0xcef54d8f, 0],
+        network_id: 0x05ec,
+    };
+
+    // Story Mainnet
+    pub const STORY_MAINNET: Network = Network {
+        genesis_hash: [
+            41,184,58,119,225,112,85,36,166,5,87,169,73,65,80,99,83,96,204,217,209,246,130,120,136,61,45,158,109,76,198,178
+        ],
+        head_td: 131072,
+        fork_id: [0x000d72b1, 0],
+        network_id: 0x05ea,
+    };
+
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
         match network {
             "ethereum_ropsten" => Ok(Self::ETHEREUM_ROPSTEN),
@@ -96,6 +117,9 @@ impl Network {
             "ethereum_holesky" => Ok(Self::ETHEREUM_HOLESKY),
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
+            "story_odyssey" => Ok(Self::STORY_ODYSSEY),
+            "story_mainnet" => Ok(Self::STORY_MAINNET),
+
             _ => Err("not matching available networks.".into()),
         }
     }
