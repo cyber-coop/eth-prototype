@@ -423,7 +423,7 @@ pub fn create_hello_message(private_key: &Vec<u8>) -> Vec<u8> {
         protocol_version: BASE_PROTOCOL_VERSION,
         client_version: String::from("deadbrain corp."),
         capabilities: vec![
-            //CapabilityMessage{ name: CapabilityName(ArrayString::from("eth").unwrap()), version: 66 },
+            CapabilityMessage{ name: CapabilityName("eth".to_string()), version: 66 },
             CapabilityMessage {
                 name: CapabilityName("eth".to_string()),
                 version: 67,

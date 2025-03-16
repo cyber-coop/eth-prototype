@@ -87,6 +87,17 @@ impl Network {
         network_id: 0x38,
     };
 
+
+    // Scroll Mainnet
+    pub const SCROLL_MAINNET: Network = Network {
+        genesis_hash: [
+            187,192,94,253,65,43,124,212,122,46,208,229,221,252,248,122,242,81,228,20,234,76,128,29,120,182,120,69,19,24,10,128
+        ],
+        head_td: 0,
+        fork_id: [0x18d3c8d9, 0],
+        network_id: 0x82750,
+    };
+
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
         match network {
             "ethereum_ropsten" => Ok(Self::ETHEREUM_ROPSTEN),
@@ -96,6 +107,7 @@ impl Network {
             "ethereum_holesky" => Ok(Self::ETHEREUM_HOLESKY),
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
+            "scroll_mainnet" => Ok(Self::SCROLL_MAINNET),
             _ => Err("not matching available networks.".into()),
         }
     }
