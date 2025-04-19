@@ -87,6 +87,17 @@ impl Network {
         network_id: 0x38,
     };
 
+    // Polygon Mainnet
+    pub const POLYGON_MAINNET: Network = Network {
+        genesis_hash: [
+            169, 194, 140, 226, 20, 27, 86, 196, 116, 241, 220, 80, 75, 238, 155, 1, 235, 27, 215,
+            209, 165, 7, 88, 13, 85, 25, 212, 67, 122, 151, 222, 27,
+        ],
+        head_td: 0,
+        fork_id: [0xf097bc13, 0],
+        network_id: 0x89,
+    };
+
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
         match network {
             "ethereum_ropsten" => Ok(Self::ETHEREUM_ROPSTEN),
@@ -96,6 +107,7 @@ impl Network {
             "ethereum_holesky" => Ok(Self::ETHEREUM_HOLESKY),
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
+            "polygon_mainnet" => Ok(Self::POLYGON_MAINNET),
             _ => Err("not matching available networks.".into()),
         }
     }

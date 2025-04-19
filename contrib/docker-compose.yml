@@ -10,10 +10,25 @@ services:
       RUST_LOG: "eth_prototype=info"
       NETWORK: "ethereum_mainnet"
     volumes:
-      - ../config.toml:/config.toml
+      - ../config.mainnet.toml:/config.toml
     depends_on:
       postgres:
         condition: service_healthy
+
+  indexer_ethereum_holesky:
+    build: ../.
+    container_name: "indexer-ethereum-holesky"
+    restart: unless-stopped
+    environment:
+      RUST_BACKTRACE: "full"
+      RUST_LOG: "eth_prototype=info"
+      NETWORK: "ethereum_holesky"
+    volumes:
+      - ../config.holesky.toml:/config.toml
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 
   postgres:
     image: "postgres:latest"
