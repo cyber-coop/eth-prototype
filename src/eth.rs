@@ -7,7 +7,7 @@ pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
 // Create status message following the ETH protocol
 pub fn create_status_message(
-    version: &usize,
+    version: &u32,
     genesis_hash: &Vec<u8>,
     head_hash: &Vec<u8>,
     head_td: &u64,
