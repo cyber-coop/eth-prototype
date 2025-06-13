@@ -1,5 +1,5 @@
 use crate::types::Withdrawal;
-use crate::types::{AccessList, Hash, AuthorizationList};
+use crate::types::{AccessList, AuthorizationList, Hash};
 use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
 use crate::utils;
 use num::BigUint;
@@ -397,7 +397,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 tx_type: 3,
             }
         }
-                4 => {
+        4 => {
             let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
             let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
             let max_priority_fee_per_gas: u64 = t.at(2).unwrap().as_val().unwrap();
