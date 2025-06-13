@@ -78,6 +78,9 @@ pub struct Hash(#[serde(with = "hex::serde")] pub Vec<u8>);
 #[derive(Serialize, Clone, Debug)]
 pub struct AccessList(pub Vec<(Hash, Vec<Hash>)>);
 
+#[derive(Serialize, Clone, Debug)]
+pub struct AuthorizationList(pub Vec<(u64, Vec<u8>, u32, u64, Vec<u8>, Vec<u8>)>);
+
 #[derive(Clone, Debug)]
 pub struct Transaction {
     pub chain_id: Option<u64>,
@@ -92,6 +95,7 @@ pub struct Transaction {
     pub access_list: Option<AccessList>, // Introduce in type 2 transactions
     pub max_fee_per_blob_gas: Option<u64>, // Introduce in type 3 transactions
     pub blob_versioned_hashes: Option<Vec<Hash>>, // Introduce in type 3 transactions
+    pub authorization_list: Option<AuthorizationList>,
     pub v: u64,
     pub r: Vec<u8>,
     pub s: Vec<u8>,
