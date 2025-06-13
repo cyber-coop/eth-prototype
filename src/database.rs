@@ -47,6 +47,7 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         access_list JSONB,
         max_fee_per_blob_gas BIGINT,
         blob_versioned_hashes JSONB,
+        authorization_list JSONB,
         v BIGINT NOT NULL,
         r BYTEA NOT NULL,
         s BYTEA NOT NULL
@@ -130,7 +131,7 @@ pub fn save_blocks(
         let mut index = 0;
         txs.iter().for_each(|t| {
             let tmp = format!(
-                "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};\\\\x{};\\\\x{}\n",
+                "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{}\n",
                 index,
                 hex::encode(&t.txid),
                 t.tx_type,
@@ -148,6 +149,7 @@ pub fn save_blocks(
                 serde_json::to_string(&t.access_list).unwrap(),
                 if let Some(max_fee_per_blob_gas) = t.max_fee_per_blob_gas { max_fee_per_blob_gas.to_string() } else { "null".to_string() },
                 serde_json::to_value(&t.blob_versioned_hashes).unwrap(),
+                serde_json::to_value(&t.authorization_list).unwrap(),
                 t.v,
                 hex::encode(&t.r),
                 hex::encode(&t.s),
@@ -248,7 +250,7 @@ pub fn save_blocks(
     withdrawals_writer.finish().unwrap();
 
     let mut chunk_index = 0;
-    let number_of_chunks = transactions_strings.len();
+    let _number_of_chunks = transactions_strings.len();
     for txs in transactions_strings {
         let mut transaction_writer = transaction
             .copy_in(

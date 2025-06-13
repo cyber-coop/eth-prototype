@@ -1,5 +1,5 @@
 use crate::types::Withdrawal;
-use crate::types::{AccessList, Hash};
+use crate::types::{AccessList, AuthorizationList, Hash};
 use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
 use crate::utils;
 use num::BigUint;
@@ -89,6 +89,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
             access_list: None,
             max_fee_per_blob_gas: None,
             blob_versioned_hashes: None,
+            authorization_list: None,
             v,
             r,
             s,
@@ -187,6 +188,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 access_list: Some(access_list),
                 max_fee_per_blob_gas: None,
                 blob_versioned_hashes: None,
+                authorization_list: None,
                 v,
                 r,
                 s,
@@ -278,6 +280,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 access_list: Some(access_list),
                 max_fee_per_blob_gas: None,
                 blob_versioned_hashes: None,
+                authorization_list: None,
                 v,
                 r,
                 s,
@@ -385,12 +388,126 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 access_list: Some(access_list),
                 max_fee_per_blob_gas: Some(max_fee_per_blob_gas),
                 blob_versioned_hashes: Some(blob_versioned_hashes),
+                authorization_list: None,
                 v,
                 r,
                 s,
                 txid,
                 from,
                 tx_type: 3,
+            }
+        }
+        4 => {
+            let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
+            let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
+            let max_priority_fee_per_gas: u64 = t.at(2).unwrap().as_val().unwrap();
+            let max_fee_per_gas: u64 = t.at(3).unwrap().as_val().unwrap();
+            let gas_limit: u64 = t.at(4).unwrap().as_val().unwrap();
+            let to: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
+            let value: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
+            let data: Vec<u8> = t.at(7).unwrap().as_val().unwrap();
+
+            let mut access_list: AccessList = AccessList(vec![]);
+            let tmp = t.at(8).unwrap();
+            for n in 0..tmp.item_count().unwrap() {
+                let access = tmp.at(n).unwrap();
+                assert!(access.is_list());
+
+                let key: Vec<u8> = access.at(0).unwrap().as_val().unwrap();
+                let list: Vec<Hash> = access
+                    .at(1)
+                    .unwrap()
+                    .as_list::<Vec<u8>>()
+                    .unwrap()
+                    .iter()
+                    .map(|list| Hash(list.to_vec()))
+                    .collect();
+
+                access_list.0.push((Hash(key), list));
+            }
+            assert_eq!(access_list.0.len(), tmp.item_count().unwrap());
+
+            // See https://eips.ethereum.org/EIPS/eip-7702
+            let mut authorization_list: AuthorizationList = AuthorizationList(vec![]);
+            let tmp = t.at(9).unwrap();
+
+            for n in 0..tmp.item_count().unwrap() {
+                let authorization = tmp.at(n).unwrap();
+                assert!(authorization.is_list());
+
+                let chain_id: u64 = authorization.at(0).unwrap().as_val().unwrap();
+                let address: Vec<u8> = authorization.at(1).unwrap().as_val().unwrap();
+                let nonce: u32 = authorization.at(2).unwrap().as_val().unwrap();
+                let y_parity: u64 = authorization.at(3).unwrap().as_val().unwrap();
+                let r: Vec<u8> = authorization.at(4).unwrap().as_val().unwrap();
+                let s: Vec<u8> = authorization.at(5).unwrap().as_val().unwrap();
+
+                authorization_list
+                    .0
+                    .push((chain_id, address, nonce, y_parity, r, s));
+            }
+
+            let v: u64 = t.at(10).unwrap().as_val().unwrap();
+            let r: Vec<u8> = t.at(11).unwrap().as_val().unwrap();
+            let s: Vec<u8> = t.at(12).unwrap().as_val().unwrap();
+
+            // Calculate from address
+            let mut rlps = rlp::RlpStream::new();
+            rlps.begin_unbounded_list();
+            for n in 0..=10 {
+                rlps.append_raw(t.at(n).unwrap().as_raw(), 1);
+            }
+            if v > 28 {
+                // TODO: This is not right...
+                let chain_id = v / 2;
+
+                rlps.append(&chain_id);
+                rlps.append(&0_u8);
+                rlps.append(&0_u8);
+            }
+            rlps.finalize_unbounded_list();
+
+            let mut hasher = Keccak256::new();
+            hasher.update([&[0x03u8], rlps.as_raw()].concat());
+            let digest = hasher.finalize();
+
+            // Get public key here and therefore address
+            let msg = secp256k1::Message::from_digest_slice(&digest).unwrap();
+            let recid = match v {
+                0 | 1 | 2 | 3 => RecoveryId::from_i32(v as i32).unwrap(),
+                27 => RecoveryId::from_i32(0).unwrap(),
+                28 => RecoveryId::from_i32(1).unwrap(),
+                _ => {
+                    let v = (v - 35) % 2;
+                    RecoveryId::from_i32(v as i32).unwrap()
+                }
+            };
+            let sig = RecoverableSignature::from_compact(&utils::get_sig(&r, &s), recid).unwrap();
+            let pubkey = sig.recover(&msg).unwrap();
+            let mut hasher = Keccak256::new();
+            hasher.update(&pubkey.serialize_uncompressed()[1..]);
+            let from: Vec<u8> = hasher.finalize()[12..].to_vec();
+
+            Transaction {
+                chain_id: Some(chain_id),
+                nonce,
+                gas_price: None,
+                max_priority_fee_per_gas: Some(max_priority_fee_per_gas),
+                max_fee_per_gas: Some(max_fee_per_gas),
+                gas_limit,
+                to,
+                value: BigUint::from_bytes_be(&value),
+                data,
+                access_list: Some(access_list),
+                max_fee_per_blob_gas: None,
+                blob_versioned_hashes: None,
+                authorization_list: Some(authorization_list),
+                v,
+                r,
+                s,
+                txid,
+                from,
+                tx_type: 4,
             }
         }
         _ => {
@@ -564,6 +681,17 @@ mod tests {
         assert_eq!(
             "3ef073ccc179364773bcd336b24767e7a2759c25",
             hex::encode(&t.from)
+        );
+    }
+
+    #[test]
+    fn test_parse_type4() {
+        let tx_payload = hex::decode("b905da04f905d6014284685fd06284ea323eea83048bbf94885822219724e9d6791b3ff0e62767b07ab8a85087138a388a43c000b9050499e1d0160000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000066a9893cc07d91d95644aedd05d03f95e1dba8af00000000000000000000000000000000000000000000000000138a388a43c000000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000003c53593564c000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000684a94f800000000000000000000000000000000000000000000000000000000000000040b080604000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000138a388a43c0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000138a388a43c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc200000000000000000000000016fb11cecdd0c2178eb0e515a30faf6b8172d054000000000000000000000000000000000000000000000000000000000000006000000000000000000000000016fb11cecdd0c2178eb0e515a30faf6b8172d054000000000000000000000000000000fee13a103a10d593b9ae06b3e05f2e7e1c0000000000000000000000000000000000000000000000000000000000000019000000000000000000000000000000000000000000000000000000000000006000000000000000000000000016fb11cecdd0c2178eb0e515a30faf6b8172d054000000000000000000000000885822219724e9d6791b3ff0e62767b07ab8a85000000000000000000000000000000000000000000000000000000763fdcb0f610b000000000000000000000000000000000000000000000000000000c0f85cf85a0194000000009b1d0af20d8c6d0a44e162d11f9b8f004301a0cda73ab8c73dd29d82d6bc216cbb432675218575f60acacc1aef7bface34f3e9a012dbb8b76aa9d293b24eb201ab4fbe5e3f6bd66e8a4b2c8268a94844498601f280a00dd2149238cde0eba654f623d670901add3a84c22382ec3a731ccc24a722f167a07f5a46715e90b0fd4a2df2ea5fde9c846eb02d7789248acdfb189ce4750a95d6").unwrap();
+
+        let t = parse_transaction(tx_payload);
+        assert_eq!(
+            "2e9949a0bda83075d4b50527570072819273fff17ccdb07aadeeaf9de9262da3",
+            hex::encode(&t.txid)
         );
     }
 }
