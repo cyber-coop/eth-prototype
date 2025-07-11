@@ -1,0 +1,31 @@
+# For more information, see https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+ignore = ["RUSTSEC-2024-0332", "RUSTSEC-2024-0421", "RUSTSEC-2024-0421", "RUSTSEC-2024-0357", "RUSTSEC-2025-0022", "RUSTSEC-2025-0004", 
+    "RUSTSEC-2024-0019" # postgres dep error... Ignore this for now.
+] # ignore dev deps warnings. We just use it for tests
+informational_warnings = ["unmaintained"]
+severity_threshold = "high"
+
+# Advisory Database Configuration
+# [database]
+# path = ".cargo/advisory-db"
+# url = "https://github.com/RustSec/advisory-db.git"
+# fetch = true
+# stale = false
+
+# Output Configuration
+[output]
+deny = []
+format = "terminal"
+quiet = false
+show_tree = true
+
+# Target Configuration
+[target]
+arch = ["x86_64"]
+os = ["linux", "windows"]
+
+[yanked]
+enabled = true
+update_index = true

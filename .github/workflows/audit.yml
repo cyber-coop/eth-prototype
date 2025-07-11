@@ -7,11 +7,14 @@ on:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.cargo/audit.toml'
+      - '.github/workflows/audit.yml'
 
 jobs:
   security_audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - run: cargo install cargo-audit --locked
       - name: Scan for vulnerabilities
         run: cargo audit
