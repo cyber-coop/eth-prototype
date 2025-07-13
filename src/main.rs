@@ -12,6 +12,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use std::net::SocketAddr;
+use std::str::FromStr;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -143,6 +145,8 @@ fn main() {
             }
         };
     }
+
+    info!("Tried all peers");
     // need to wait for database thread to finish
     database_handle.join().unwrap();
 }
@@ -158,7 +162,7 @@ fn run(
      *  Connect to peer
      *
      ******************/
-    let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port))?;
+    let mut stream = TcpStream::connect_timeout(&SocketAddr::from_str(&format!("{}:{}", peer.ip, peer.port)).unwrap(), Duration::from_secs(3))?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
@@ -309,6 +313,8 @@ fn run(
         return Err("Disconnected peer".into());
     }
     let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
+
+    dbg!(&their_status);
 
     if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
         warn!(
