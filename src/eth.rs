@@ -5,31 +5,28 @@ use crate::types::{Block, Transaction, Withdrawal};
 
 pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
+#[derive(Debug)]
+pub struct Status {
+    pub version: u32,
+    pub network_id: u64,
+    pub td: Vec<u8>,
+    pub blockhash: Vec<u8>,
+    pub genesis: Vec<u8>,
+    pub fork_id: (Vec<u8>, u64), // [Fork Hash, Next Fork]
+}
+
 // Create status message following the ETH protocol
-pub fn create_status_message(
-    version: &usize,
-    genesis_hash: &Vec<u8>,
-    head_hash: &Vec<u8>,
-    head_td: &u64,
-    fork_id: &Vec<u32>,
-    network_id: &u32,
-) -> Vec<u8> {
+pub fn create_status_message(status: Status) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
-    // Protocol version
-    s.append(version);
-    // network Id
-    s.append(network_id);
-    // head Td
-    s.append(head_td);
-    // head Hash
-    s.append(head_hash);
-    // genesis Hash
-    s.append(genesis_hash);
-    // fork ID
+    s.append(&status.version);
+    s.append(&status.network_id);
+    s.append(&status.td);
+    s.append(&status.blockhash);
+    s.append(&status.genesis);
     s.begin_list(2);
-    s.append(&fork_id[0]);
-    s.append(&fork_id[1]);
+    s.append(&status.fork_id.0);
+    s.append(&status.fork_id.1);
 
     s.finalize_unbounded_list();
 
@@ -42,27 +39,39 @@ pub fn create_status_message(
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_status_message(payload: Vec<u8>) -> Vec<u8> {
+pub fn parse_status_message(payload: Vec<u8>) -> Option<Status> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(&payload).unwrap();
 
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
 
-    let _version: u16 = r.at(0).unwrap().as_val().unwrap();
-    let _network_id: u64 = r.at(1).unwrap().as_val().unwrap();
-    // let _td: u64 = r.at(2).unwrap().as_val().unwrap();
-    let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
-    let _genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
-
-    if r.item_count().unwrap() == 6 {
-        let forkidrlp = r.at(5).unwrap();
-        assert!(forkidrlp.is_list());
-        let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
-        let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+    if r.is_empty() {
+        return None;
     }
 
-    return blockhash;
+    let version: u32 = r.at(0).unwrap().as_val().unwrap();
+    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
+    let td: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
+    let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
+    let genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
+
+    // get forkid info
+    let forkidrlp = r.at(5).unwrap();
+    assert!(forkidrlp.is_list());
+    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
+    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+
+    let status = Status {
+        version,
+        network_id,
+        td,
+        blockhash,
+        genesis,
+        fork_id: (fork_hash, fork_next),
+    };
+
+    return Some(status);
 }
 
 pub fn create_get_block_headers_message(

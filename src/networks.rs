@@ -6,7 +6,7 @@ pub struct Network {
     pub genesis_hash: [u8; 32],
     pub head_td: u64,
     pub fork_id: [u32; 2],
-    pub network_id: u32,
+    pub network_id: u64,
 }
 
 impl Network {
