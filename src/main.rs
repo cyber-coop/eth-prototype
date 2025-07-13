@@ -4,16 +4,16 @@ use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
 use std::error;
+use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::process;
+use std::str::FromStr;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use std::net::SocketAddr;
-use std::str::FromStr;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -162,7 +162,10 @@ fn run(
      *  Connect to peer
      *
      ******************/
-    let mut stream = TcpStream::connect_timeout(&SocketAddr::from_str(&format!("{}:{}", peer.ip, peer.port)).unwrap(), Duration::from_secs(3))?;
+    let mut stream = TcpStream::connect_timeout(
+        &SocketAddr::from_str(&format!("{}:{}", peer.ip, peer.port)).unwrap(),
+        Duration::from_secs(3),
+    )?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
