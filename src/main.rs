@@ -4,8 +4,10 @@ use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::env;
 use std::error;
+use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::process;
+use std::str::FromStr;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
@@ -143,6 +145,8 @@ fn main() {
             }
         };
     }
+
+    info!("Tried all peers");
     // need to wait for database thread to finish
     database_handle.join().unwrap();
 }
@@ -158,7 +162,10 @@ fn run(
      *  Connect to peer
      *
      ******************/
-    let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port))?;
+    let mut stream = TcpStream::connect_timeout(
+        &SocketAddr::from_str(&format!("{}:{}", peer.ip, peer.port)).unwrap(),
+        Duration::from_secs(3),
+    )?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
@@ -250,11 +257,11 @@ fn run(
     info!("{:#?}", &hello_message);
 
     // We need to find the highest eth version it supports
-    let mut version = 0;
+    let mut version: u32 = 0;
     for capability in hello_message.capabilities {
         if capability.name.0.to_string() == "eth" {
-            if capability.version > version {
-                version = capability.version;
+            if capability.version as u32 > version {
+                version = capability.version as u32;
             }
         }
     }
@@ -277,20 +284,23 @@ fn run(
 
     info!("Sending STATUS message");
 
-    let genesis_hash = network.genesis_hash.to_vec();
-    let head_td = 0;
-    let fork_id = network.fork_id.to_vec();
-    let network_id = network.network_id;
+    let status = eth::Status {
+        version,
+        network_id: network.network_id,
+        td: network
+            .head_td
+            .to_be_bytes()
+            .iter()
+            .skip_while(|x| **x == 0)
+            .map(|x| *x)
+            .collect(), // Maybe I should just have change the status type. But this is needed for now to remove the zeroes at the begining
+        blockhash: network.genesis_hash.to_vec(),
+        genesis: network.genesis_hash.to_vec(),
+        fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
+    };
 
-    let status = eth::create_status_message(
-        &version,
-        &genesis_hash,
-        &genesis_hash,
-        &head_td,
-        &fork_id,
-        &network_id,
-    );
-    utils::send_message(status, &mut stream, &mut egress_mac, &mut egress_aes)?;
+    let payload = eth::create_status_message(status);
+    utils::send_message(payload, &mut stream, &mut egress_mac, &mut egress_aes)?;
 
     /******************
      *
@@ -305,7 +315,18 @@ fn run(
 
         return Err("Disconnected peer".into());
     }
-    let their_current_hash = eth::parse_status_message(uncrypted_body[1..].to_vec());
+    let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
+
+    dbg!(&their_status);
+
+    if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
+        warn!(
+            "Wrong Fork ID. Expected {} but got {}",
+            hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
+            hex::encode(their_status.fork_id.0)
+        );
+        return Err("Incompatible fork".into());
+    }
 
     /******************
      *
@@ -324,7 +345,7 @@ fn run(
 
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
-        *current_hash = their_current_hash;
+        *current_hash = their_status.blockhash;
 
         /******************
          *
