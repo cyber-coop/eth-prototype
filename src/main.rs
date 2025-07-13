@@ -280,7 +280,13 @@ fn run(
     let status = eth::Status {
         version,
         network_id: network.network_id,
-        td: network.head_td.to_be_bytes().iter().skip_while(|x| **x == 0).map(|x| *x).collect(), // Maybe I should just have change the status type. But this is needed for now to remove the zeroes at the begining
+        td: network
+            .head_td
+            .to_be_bytes()
+            .iter()
+            .skip_while(|x| **x == 0)
+            .map(|x| *x)
+            .collect(), // Maybe I should just have change the status type. But this is needed for now to remove the zeroes at the begining
         blockhash: network.genesis_hash.to_vec(),
         genesis: network.genesis_hash.to_vec(),
         fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
@@ -305,7 +311,11 @@ fn run(
     let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
 
     if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
-        warn!("Wrong Fork ID. Expected {} but got {}", hex::encode(network.fork_id[0].to_be_bytes().to_vec()), hex::encode(their_status.fork_id.0));
+        warn!(
+            "Wrong Fork ID. Expected {} but got {}",
+            hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
+            hex::encode(their_status.fork_id.0)
+        );
         return Err("Incompatible fork".into());
     }
 
