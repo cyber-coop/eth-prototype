@@ -208,8 +208,7 @@ fn run(
     info!("ACK message received");
     info!("Received Ack");
     if payload[0] != 0x04 {
-        dbg!(payload[0]);
-        panic!("Didn't received ACK when expecting it");
+        return Err("Didn't received ACK when expecting it".into());
     }
 
     let (_remote_public_key, remote_nonce, ephemeral_shared_secret) =
@@ -317,8 +316,6 @@ fn run(
     }
     let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
 
-    dbg!(&their_status);
-
     if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
         warn!(
             "Wrong Fork ID. Expected {} but got {}",
@@ -346,44 +343,6 @@ fn run(
     // If we do't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         *current_hash = their_status.blockhash;
-
-        /******************
-         *
-         *  Get safe block hash (approx 1024 blocks behind the highest)
-         *
-         ******************/
-
-        // info!("Get safe block hash");
-        // let get_blocks_headers =
-        //     eth::create_get_block_headers_message(&current_hash, 2, 1024, true);
-        // utils::send_message(
-        //     get_blocks_headers,
-        //     &mut stream,
-        //     &mut egress_mac,
-        //     &mut egress_aes,
-        // )?;
-
-        // let mut uncrypted_body: Vec<u8>;
-        // let mut code;
-        // loop {
-        //     uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
-
-        //     if uncrypted_body[0] > 16 {
-        //         code = uncrypted_body[0] - 16;
-        //         if code == 4 {
-        //             break;
-        //         }
-        //     }
-        // }
-
-        // assert_eq!(code, 4);
-
-        // let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
-
-        // dbg!(&block_headers);
-
-        // // update block hash
-        // *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
     }
 
     /****************************
