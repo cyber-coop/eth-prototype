@@ -435,7 +435,8 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 let authorization = tmp.at(n).unwrap();
                 assert!(authorization.is_list());
 
-                let chain_id: u64 = authorization.at(0).unwrap().as_val().unwrap();
+                // Some asshole create a transaction with 1407996450619573357857283148491789578994728514355 as a chain ID. WHY ?
+                let chain_id: Vec<u8> = authorization.at(0).unwrap().as_val().unwrap();
                 let address: Vec<u8> = authorization.at(1).unwrap().as_val().unwrap();
                 let nonce: u32 = authorization.at(2).unwrap().as_val().unwrap();
                 let y_parity: u64 = authorization.at(3).unwrap().as_val().unwrap();

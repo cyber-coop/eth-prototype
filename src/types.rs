@@ -79,7 +79,7 @@ pub struct Hash(#[serde(with = "hex::serde")] pub Vec<u8>);
 pub struct AccessList(pub Vec<(Hash, Vec<Hash>)>);
 
 #[derive(Serialize, Clone, Debug)]
-pub struct AuthorizationList(pub Vec<(u64, Vec<u8>, u32, u64, Vec<u8>, Vec<u8>)>);
+pub struct AuthorizationList(pub Vec<(Vec<u8>, Vec<u8>, u32, u64, Vec<u8>, Vec<u8>)>);
 
 #[derive(Clone, Debug)]
 pub struct Transaction {
