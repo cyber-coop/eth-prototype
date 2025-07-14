@@ -435,6 +435,8 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 let authorization = tmp.at(n).unwrap();
                 assert!(authorization.is_list());
 
+                dbg!(hex::encode(authorization.as_raw()));
+
                 let chain_id: u64 = authorization.at(0).unwrap().as_val().unwrap();
                 let address: Vec<u8> = authorization.at(1).unwrap().as_val().unwrap();
                 let nonce: u32 = authorization.at(2).unwrap().as_val().unwrap();
