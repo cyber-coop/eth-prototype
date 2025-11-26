@@ -1,12 +1,12 @@
 use crate::types::Withdrawal;
 use crate::types::{AccessList, AuthorizationList, Hash};
-use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
+use crate::types::{HelloMessage, Transaction};
 use crate::utils;
 use num::BigUint;
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 use sha3::{Digest, Keccak256};
 
-const BASE_PROTOCOL_VERSION: usize = 5;
+pub const BASE_PROTOCOL_VERSION: u32 = 5;
 
 pub fn create_pong_message() -> Vec<u8> {
     let payload = rlp::encode_list(&[0_u8; 0]);
@@ -534,37 +534,63 @@ pub fn util_parse_withdrawal(payload: Vec<u8>) -> Withdrawal {
     };
 }
 
-pub fn create_hello_message(private_key: &Vec<u8>) -> Vec<u8> {
-    let secp = secp256k1::Secp256k1::new();
-    let private_key = secp256k1::SecretKey::from_slice(&private_key).unwrap();
-    let hello = HelloMessage {
-        protocol_version: BASE_PROTOCOL_VERSION,
-        client_version: String::from("deadbrain corp."),
-        capabilities: vec![
-            //CapabilityMessage{ name: CapabilityName(ArrayString::from("eth").unwrap()), version: 66 },
-            CapabilityMessage {
-                name: CapabilityName("eth".to_string()),
-                version: 67,
-            },
-            CapabilityMessage {
-                name: CapabilityName("eth".to_string()),
-                version: 68,
-            },
-        ],
-        port: 0,
-        id: primitive_types::H512::from_slice(
-            &secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
-                [1..],
-        ),
-    };
+pub fn create_hello_message(hello: HelloMessage) -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
 
-    let payload = rlp::encode(&hello);
+    s.begin_list(5);
+    s.append(&hello.protocol_version);
+    s.append(&hello.client);
+
+    s.begin_list(hello.capabilities.len());
+    for capability in hello.capabilities {
+        s.begin_list(2);
+        s.append(&capability.0);
+        s.append(&capability.1);
+    }
+
+    s.append(&hello.port);
+    s.append(&hello.id);
+
+    let payload = s.as_raw();
     let code: Vec<u8> = vec![0x80];
     // Add HELLO code in front
     let message = [code.to_vec(), payload.to_vec()].concat();
 
     return message;
 }
+
+
+pub fn parse_hello_message(payload: Vec<u8>) -> HelloMessage {
+    let r = rlp::Rlp::new(&payload);
+    assert!(r.is_list());
+
+    let protocol_version: u32 = r.at(0).unwrap().as_val().unwrap();
+    let client: String = r.at(1).unwrap().as_val().unwrap();
+    let capabilities_list = r.at(2).unwrap();
+
+    let mut capabilities: Vec<(String, u32)> = vec![];
+    for i in 0..capabilities_list.item_count().unwrap() {
+        let capability = capabilities_list.at(i).unwrap();
+        assert!(capability.is_list());
+
+        let name: String = capability.at(0).unwrap().as_val().unwrap();
+        let version: u32 = capability.at(1).unwrap().as_val().unwrap();
+
+        capabilities.push((name, version));
+    }
+
+    let port = r.at(3).unwrap().as_val().unwrap();
+    let id = r.at(4).unwrap().as_val().unwrap();
+
+    HelloMessage {
+        protocol_version,
+        client,
+        capabilities,
+        port,
+        id,
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
