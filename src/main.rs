@@ -40,6 +40,7 @@ fn main() {
     // Load config values from the config file
     let config = configs::read_config();
     let mut current_hash: Vec<u8> = vec![];
+    let mut reverse = true; // when we init syncing we go from the tip to the genesis block
 
     /******************
      *
@@ -84,16 +85,37 @@ fn main() {
             Ok(h) => {
                 current_hash = h;
             }
-            Err(_) => {}
+            Err(_) => {
+                error!("Fail to get hash of the minimum block");
+            }
         }
 
         if current_hash
             == hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
                 .unwrap()
         {
-            info!("We are already synced completly! Exiting indexer");
+            info!("We are already synced completly!");
 
-            process::exit(0);
+            // We get the highest block to keep indexing the new ones
+            let result = postgres_client.query(format!("SELECT hash, number FROM {0}.blocks WHERE number = (SELECT MAX(number) FROM {0}.blocks);", network_arg).as_str(), &[]).unwrap();
+
+            let row = &result[0];
+            let hash = row.try_get(0);
+
+            let number: i32 = row.try_get(1).unwrap();
+            dbg!(number);
+
+            match hash {
+                Ok(h) => {
+                    current_hash = h;
+                    reverse = false; // The initial sync has been done. We keep indexing the new incoming blocks now.
+                }
+                Err(_) => {
+                    error!("Fail to get hash of the max block");
+                }
+            }
+
+            info!("We now save the new incoming blocks");
         }
 
         info!("We are starting at hash {}", hex::encode(&current_hash));
@@ -134,7 +156,7 @@ fn main() {
     });
 
     for peer in config.peers {
-        match run(peer, network, &mut current_hash, &tx) {
+        match run(peer, network, &mut current_hash, reverse, &tx) {
             Ok(()) => {
                 // We are done
                 break;
@@ -155,6 +177,7 @@ fn run(
     peer: Peer,
     network: Network,
     current_hash: &mut Vec<u8>,
+    reverse: bool,
     tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
 ) -> Result<(), Box<dyn error::Error>> {
     /******************
@@ -251,17 +274,19 @@ fn run(
 
     // Should be HELLO
     assert_eq!(0x80, uncrypted_body[0]);
-    let hello_message = rlp::decode::<types::HelloMessage>(&uncrypted_body[1..]).unwrap();
+    let hello_message = message::parse_hello_message(uncrypted_body[1..].to_vec());
 
     info!("{:#?}", &hello_message);
 
     // We need to find the highest eth version it supports
-    let mut version: u32 = 0;
-    for capability in hello_message.capabilities {
-        if capability.name.0.to_string() == "eth" {
-            if capability.version as u32 > version && capability.version < 69 {
-                // TODO: support 69 eth
-                version = capability.version as u32;
+    let _capabilities = serde_json::to_string(&hello_message.capabilities).unwrap();
+
+    // We need to find the highest eth version it supports
+    let mut version = 0;
+    for capability in &hello_message.capabilities {
+        if capability.0.to_string() == "eth" {
+            if capability.1 > version && capability.1 < 69 {
+                version = capability.1;
             }
         }
     }
@@ -273,7 +298,21 @@ fn run(
      ******************/
 
     info!("Sending HELLO message");
-    let hello = message::create_hello_message(&private_key);
+    let secp = secp256k1::Secp256k1::new();
+    let private_key = secp256k1::SecretKey::from_slice(&private_key).unwrap();
+    let hello_message = types::HelloMessage {
+        protocol_version: message::BASE_PROTOCOL_VERSION,
+        client: String::from("deadbrain corp."),
+        capabilities: vec![
+            ("eth".into(), 67),
+            ("eth".into(), 68),
+        ],
+        port: 0,
+        id: secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
+            [1..]
+            .to_vec(),
+    };
+    let hello = message::create_hello_message(hello_message);
     utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes)?;
 
     /******************
@@ -341,7 +380,7 @@ fn run(
         )?;
     }
 
-    // If we do't have blocks in the database we use the best one
+    // If we don't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         *current_hash = their_status.blockhash;
     }
@@ -435,8 +474,9 @@ fn run(
          ******************/
 
         info!("Sending GetBlockHeaders message");
+
         let get_blocks_headers =
-            eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, true);
+            eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, reverse);
         utils::send_message(
             get_blocks_headers,
             &mut stream,
@@ -467,7 +507,14 @@ fn run(
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        if (reverse) {
+            *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
+        } else {
+            *current_hash = block_headers.last().unwrap().hash.to_vec();
+
+            dbg!(block_headers.first().unwrap().number);
+            dbg!(block_headers.last().unwrap().number);
+        }
 
         /******************
          *
@@ -535,6 +582,9 @@ fn run(
 
         let current_height = blocks.last().unwrap().0.number;
         info!("Blocks n° {}", current_height);
+
+        // We already have the first block of the current batch when toward the tip of the chain
+        if (!reverse) { blocks.remove(0); }
 
         // send blocks to the other thread to save in database
         if blocks.len() > 0 {
