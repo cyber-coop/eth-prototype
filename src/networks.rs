@@ -65,6 +65,17 @@ impl Network {
         network_id: 0x4268,
     };
 
+    // Ethereum Hoodi
+    pub const ETHEREUM_HOODI: Network = Network {
+        genesis_hash: [
+            187, 227, 18, 134, 139, 55, 106, 48, 1, 105, 42, 100, 109, 210, 215, 209, 228, 64, 99,
+            128, 223, 216, 107, 152, 170, 138, 52, 209, 85, 124, 151, 27,
+        ],
+        head_td: 0,
+        fork_id: [0x0929e24e, 0],
+        network_id: 0x88bb0,
+    };
+
     // Ethereum Mainnet
     pub const ETHEREUM_MAINNET: Network = Network {
         genesis_hash: [
@@ -105,6 +116,7 @@ impl Network {
             "ethereum_goerli" => Ok(Self::ETHEREUM_GOERLI),
             "ethereum_sepolia" => Ok(Self::ETHEREUM_SEPOLIA),
             "ethereum_holesky" => Ok(Self::ETHEREUM_HOLESKY),
+            "ethereum_hoodi" => Ok(Self::ETHEREUM_HOODI),
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
             "polygon_mainnet" => Ok(Self::POLYGON_MAINNET),
