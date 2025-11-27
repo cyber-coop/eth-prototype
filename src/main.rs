@@ -367,8 +367,6 @@ fn run(
 
             // handle RLPx message
             if uncrypted_body[0] < 16 {
-                info!("Code {}", uncrypted_body[0]);
-                info!("{}", hex::encode(&uncrypted_body));
                 code = uncrypted_body[0];
 
                 if code == 2 {
@@ -393,6 +391,9 @@ fn run(
 
                     return;
                 }
+
+                info!("Unknown code {}", uncrypted_body[0]);
+                info!("{}", hex::encode(&uncrypted_body));
 
                 continue;
             }
