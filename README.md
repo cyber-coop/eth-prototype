@@ -13,6 +13,8 @@ ethereum_ropsten
 ethereum_rinkeby
 ethereum_goerli
 ethereum_sepolia
+ethereum_holesky
+ethereum_hoodi
 ethereum_mainnet
 binance_mainnet
 ```

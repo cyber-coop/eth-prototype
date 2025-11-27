@@ -34,7 +34,7 @@ fn main() {
     // Read cli args for network value
     let network_arg: String = env::args()
         .nth(1)
-        .expect("expecting a network (ethereum_ropsten, ethereum_rinkeby, ethereum_goerli, ethereum_sepolia, ethereum_mainnet or binance_mainnet).");
+        .expect("expecting a network (ethereum_ropsten, ethereum_rinkeby, ethereum_goerli, ethereum_sepolia, ethereum_holesky, ethereum_hoodi, ethereum_mainnet or binance_mainnet).");
     let network = networks::Network::find(network_arg.as_str()).unwrap();
 
     // Load config values from the config file
