@@ -60,21 +60,64 @@ If you don't have any peer to connect with, you can grab one in this [database](
 
 If you want to run the indexer locally, then leave the localhost as **localhost**.
 
-If you want to run it in a Docker contianer, please set the localhost to **postgres** in the `config.toml` file.
+If you want to run it in a Docker container, set the localhost to **postgres** in the `config.toml` file.
 
-### Specifying the queue size
+## Quick Start (using docker compose)
 
-The queue size allows to optimize the indexer depending on your machine.
+To start indexing right away you can take a look at the `contrib/docker-compose.yml` file. This docker compose file starts 2 indexers (Mainnet and Holesky) and a postgres database. To make the database peristent remove the comments for the `volumes`.
 
-The bigger the queue size is, the more RAM it'll use.
+You will need to create 2 configs file as described the **Configuration** section for each networks you want to index if you want to index several network.
 
-Copying data in database is slower than processing blocks, so two threads are operating.
+Specifying the `NETWORK` allow to choose which network to start indexing.
 
-The queue size will then specify how many batchs of 1024 blocks will be stored in the queue.
+`docker-compose.yml`
+```YAML
+services:
+  indexer_ethereum_mainnet:
+    build: https://github.com/cyber-coop/eth-prototype.git
+    container_name: "indexer-ethereum-mainnet"
+    restart: unless-stopped
+    environment:
+      RUST_BACKTRACE: "full"
+      RUST_LOG: "eth_prototype=info"
+      NETWORK: "ethereum_mainnet"
+    volumes:
+      - ./config.mainnet.toml:/config.toml
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-For instance, a queue size of 4 (set as default) will store a maximum of 4 x 1024 blocks (4096 blocks).
+  indexer_ethereum_holesky:
+    build: https://github.com/cyber-coop/eth-prototype.git
+    container_name: "indexer-ethereum-holesky"
+    restart: unless-stopped
+    environment:
+      RUST_BACKTRACE: "full"
+      RUST_LOG: "eth_prototype=info"
+      NETWORK: "ethereum_holesky"
+    volumes:
+      - ./config.holesky.toml:/config.toml
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-Depending on how much RAM you have on your machine, this might be too large so you may need to reduce it, or actually increase it for better performance.
+
+  postgres:
+    image: "postgres:18"
+    container_name: "postgres"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: wow
+      POSTGRES_DB: blockchains
+    # ¡IMPORTANT! If you don't want to lose your data you should uncomment this
+    # volumes:
+    #   - ./data/:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
 
 ## Run locally
 
@@ -99,82 +142,6 @@ Now you can run the indexer (replace the network by any of the supported network
 ```shell
 make run network=ethereum_mainnet
 ```
-
-## Run on Docker
-
-### Docker compose
-
-To facilitate things, we have provided a `docker-compose.yml` file under the `contrib` folder that starts the indexer and the postgres database.
-
-
-**NOTE**: Please uncomment the **volume** part to make the database persistent and prevent loosing data in case the container is deleted.
-
-Make sure you've set the localhost to **postgres** in the `config.toml` file, and chose the right network in the `docker-compose.yml` then run the following command:
-
-```shell
-docker compose -f contrib/docker-compose.yml up
-```
-
-If you've made any edits in the `docker-compose.yml` file, make sure to add **--build**.
-
-```shell
-docker compose -f contrib/docker-compose.yml up --build
-```
-
-**NOTE**: There is some modification to do in the docker compose file to make the database persistent.
-
-### Creating the database
-
-First, you need to create the postgres database:
-
-```shell
-make postgres
-```
-
-Then you can check the database is properly created: 
-
-```shell
-docker ps
-```
-
-### Run the indexer
-
-Now you can run the indexer:
-
-```shell
-make run network=ethereum_mainnet
-```
-
-## Side notes
-
-The databases tables are created as LOGGED tables by default. You can set them as UNLOGGED to improve the blocks processing speed, but note this could cause unpredicted data losses when interacting with the databases.
-
-## A little benchmark
-
-Depending on your hardware configuration, the indexer can run faster or slower.
-
-Here is a test of the indexer running on two different machines (with their characteristics) and their rates of total processed blocks per second to have a general idea.
-This test was run with logged tables, the performances are drastically better with unlogged tables.
-
-### First machine
-
-**Machine:** OVH Server
-**OS:** Ubuntu 22.04 Jammy Jellyfish
-**CPU:** Intel Atom N2800 - 2 cores / 4 threads - 1,86 GHz
-**RAM:** 4 GB 1066 MHz
-**Hard drive:** 1 TB HDD Sata
-
-Blocks per second: 13 (average)
-
-### Second machine
-
-**Machine:** Macbook Pro 2020
-**OS:** macOS Sonoma 14.0
-**CPU:** Intel Core i5 - 4 cores / 8 threads - 1,4 GHz
-**RAM:** 8 GB 2133 MHz LPDDR3
-**Hard drive:** 256 GB SSD
-
-Blocks per second: 128 (average)
 
 ## Troubleshooting
 
