@@ -20,15 +20,9 @@ pub struct Peer {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct IndexerConfig {
-    pub queue_size: u32,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     pub database: DatabaseConfig,
     pub peers: Vec<Peer>,
-    pub indexer: IndexerConfig,
 }
 
 pub fn read_config() -> Config {

@@ -4,9 +4,6 @@ user = "postgres"
 password = "wow"
 dbname = "blockchains"
 
-[indexer]
-queue_size = 4
-
 # Mainnet
 [[peers]]
 ip = "127.0.0.1"

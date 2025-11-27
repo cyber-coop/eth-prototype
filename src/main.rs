@@ -105,8 +105,8 @@ fn main() {
      *
      ********************/
 
-    // Creates the desired number of streaming channels (1024 blocks batches) (configurable in the config.toml file according to RAM capacity)
-    let (tx, rx) = sync_channel(config.indexer.queue_size.try_into().unwrap());
+    // Create a queue with a maximum of 102400 blocks (100 * 1024 = 102400 blocks). We query blocks by batch of 1024 blocks.
+    let (tx, rx) = sync_channel(100);
 
     let database_handle = thread::spawn(move || {
         info!("Starting database thread");
