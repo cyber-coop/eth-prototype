@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   indexer_ethereum_mainnet:
-    build: ../.
+    image: "rllola/eth-prototype:latest"
     container_name: "indexer-ethereum-mainnet"
     restart: unless-stopped
     environment:
@@ -10,13 +8,13 @@ services:
       RUST_LOG: "eth_prototype=info"
       NETWORK: "ethereum_mainnet"
     volumes:
-      - ../config.mainnet.toml:/config.toml
+      - ./config.mainnet.toml:/config.toml
     depends_on:
       postgres:
         condition: service_healthy
 
   indexer_ethereum_holesky:
-    build: ../.
+    image: "rllola/eth-prototype:latest"
     container_name: "indexer-ethereum-holesky"
     restart: unless-stopped
     environment:
@@ -24,22 +22,22 @@ services:
       RUST_LOG: "eth_prototype=info"
       NETWORK: "ethereum_holesky"
     volumes:
-      - ../config.holesky.toml:/config.toml
+      - ./config.holesky.toml:/config.toml
     depends_on:
       postgres:
         condition: service_healthy
 
 
   postgres:
-    image: "postgres:latest"
+    image: "postgres:18"
     container_name: "postgres"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: wow
       POSTGRES_DB: blockchains
     # ¡IMPORTANT! If you don't want to lose your data you should uncomment this
-    volumes:
-      - ./data/:/var/lib/postgresql/data/
+    # volumes:
+    #   - ./data/:/var/lib/postgresql/
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
