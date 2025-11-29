@@ -1,5 +1,5 @@
-use crate::types::Withdrawal;
 use crate::types::{AccessList, AuthorizationList, Hash};
+use crate::types::{Authorization, Withdrawal};
 use crate::types::{CapabilityMessage, CapabilityName, HelloMessage, Transaction};
 use crate::utils;
 use num::BigUint;
@@ -435,17 +435,16 @@ pub fn parse_transaction(payload: Vec<u8>) -> Transaction {
                 let authorization = tmp.at(n).unwrap();
                 assert!(authorization.is_list());
 
-                // Some asshole create a transaction with 1407996450619573357857283148491789578994728514355 as a chain ID. WHY ?
-                let chain_id: Vec<u8> = authorization.at(0).unwrap().as_val().unwrap();
-                let address: Vec<u8> = authorization.at(1).unwrap().as_val().unwrap();
-                let nonce: u32 = authorization.at(2).unwrap().as_val().unwrap();
-                let y_parity: u64 = authorization.at(3).unwrap().as_val().unwrap();
-                let r: Vec<u8> = authorization.at(4).unwrap().as_val().unwrap();
-                let s: Vec<u8> = authorization.at(5).unwrap().as_val().unwrap();
+                let authorization = Authorization {
+                    chain_id: authorization.at(0).unwrap().as_val().unwrap(),
+                    address: authorization.at(1).unwrap().as_val().unwrap(),
+                    nonce: authorization.at(2).unwrap().as_val().unwrap(),
+                    y_parity: authorization.at(3).unwrap().as_val().unwrap(),
+                    r: authorization.at(4).unwrap().as_val().unwrap(),
+                    s: authorization.at(5).unwrap().as_val().unwrap(),
+                };
 
-                authorization_list
-                    .0
-                    .push((chain_id, address, nonce, y_parity, r, s));
+                authorization_list.0.push(authorization);
             }
 
             let v: u64 = t.at(10).unwrap().as_val().unwrap();
