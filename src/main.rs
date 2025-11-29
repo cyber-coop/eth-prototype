@@ -259,7 +259,8 @@ fn run(
     let mut version: u32 = 0;
     for capability in hello_message.capabilities {
         if capability.name.0.to_string() == "eth" {
-            if capability.version as u32 > version {
+            if capability.version as u32 > version && capability.version < 69 {
+                // TODO: support 69 eth
                 version = capability.version as u32;
             }
         }
