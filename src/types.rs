@@ -79,7 +79,22 @@ pub struct Hash(#[serde(with = "hex::serde")] pub Vec<u8>);
 pub struct AccessList(pub Vec<(Hash, Vec<Hash>)>);
 
 #[derive(Serialize, Clone, Debug)]
-pub struct AuthorizationList(pub Vec<(Vec<u8>, Vec<u8>, u32, u64, Vec<u8>, Vec<u8>)>);
+pub struct AuthorizationList(pub Vec<Authorization>);
+
+// See https://eips.ethereum.org/EIPS/eip-7702
+#[derive(Serialize, Clone, Debug)]
+pub struct Authorization {
+    #[serde(with = "hex::serde")]
+    pub chain_id: Vec<u8>, // Some asshole created a transaction with 1407996450619573357857283148491789578994728514355 as a chain ID. WHY ?
+    #[serde(with = "hex::serde")]
+    pub address: Vec<u8>,
+    pub nonce: u32,
+    pub y_parity: u64,
+    #[serde(with = "hex::serde")]
+    pub r: Vec<u8>,
+    #[serde(with = "hex::serde")]
+    pub s: Vec<u8>,
+}
 
 #[derive(Clone, Debug)]
 pub struct Transaction {
@@ -95,7 +110,7 @@ pub struct Transaction {
     pub access_list: Option<AccessList>, // Introduce in type 2 transactions
     pub max_fee_per_blob_gas: Option<u64>, // Introduce in type 3 transactions
     pub blob_versioned_hashes: Option<Vec<Hash>>, // Introduce in type 3 transactions
-    pub authorization_list: Option<AuthorizationList>,
+    pub authorization_list: Option<AuthorizationList>, // Introduce in type 4 transactions
     pub v: u64,
     pub r: Vec<u8>,
     pub s: Vec<u8>,
