@@ -1,6 +1,7 @@
 use aes::cipher::KeyIvInit;
 use devp2p::{ecies::ECIES, util::pk2id};
 use eth_prototype::database;
+use eth_prototype::types;
 use eth_prototype::{mac, message, utils};
 use log::info;
 use secp256k1_20::{PublicKey, SecretKey, SECP256K1};
@@ -128,7 +129,18 @@ fn communicate() {
     assert_eq!(ret, server_to_client_data);
 
     // Test client to server 1
-    let hello = message::create_hello_message(&private_key);
+    let secp = secp256k1::Secp256k1::new();
+    let private_key = secp256k1::SecretKey::from_slice(&private_key).unwrap();
+    let hello = types::HelloMessage {
+        protocol_version: message::BASE_PROTOCOL_VERSION,
+        client: String::from("deadbrain corp."),
+        capabilities: vec![("eth".into(), 67), ("eth".into(), 68)],
+        port: 0,
+        id: secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
+            [1..]
+            .to_vec(),
+    };
+    let hello = message::create_hello_message(hello);
     let mut header = utils::create_header(hello.len(), &mut egress_mac, &mut egress_aes);
 
     let _ = server_ecies.read_header(&mut header);
