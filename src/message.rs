@@ -559,7 +559,6 @@ pub fn create_hello_message(hello: HelloMessage) -> Vec<u8> {
     return message;
 }
 
-
 pub fn parse_hello_message(payload: Vec<u8>) -> HelloMessage {
     let r = rlp::Rlp::new(&payload);
     assert!(r.is_list());
@@ -590,7 +589,6 @@ pub fn parse_hello_message(payload: Vec<u8>) -> HelloMessage {
         id,
     }
 }
-
 
 #[cfg(test)]
 mod tests {

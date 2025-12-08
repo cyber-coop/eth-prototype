@@ -1,11 +1,11 @@
 use aes::cipher::KeyIvInit;
 use devp2p::{ecies::ECIES, util::pk2id};
 use eth_prototype::database;
+use eth_prototype::types;
 use eth_prototype::{mac, message, utils};
 use log::info;
 use secp256k1_20::{PublicKey, SecretKey, SECP256K1};
 use sha3::{Digest, Keccak256};
-use eth_prototype::types;
 
 #[test]
 fn communicate() {
@@ -134,13 +134,10 @@ fn communicate() {
     let hello = types::HelloMessage {
         protocol_version: message::BASE_PROTOCOL_VERSION,
         client: String::from("deadbrain corp."),
-        capabilities: vec![
-            ("eth".into(), 67),
-            ("eth".into(), 68),
-        ],
+        capabilities: vec![("eth".into(), 67), ("eth".into(), 68)],
         port: 0,
-        id: secp256k1::PublicKey::from_secret_key(&secp, &private_key)
-            .serialize_uncompressed()[1..]
+        id: secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
+            [1..]
             .to_vec(),
     };
     let hello = message::create_hello_message(hello);

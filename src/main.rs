@@ -303,10 +303,7 @@ fn run(
     let hello_message = types::HelloMessage {
         protocol_version: message::BASE_PROTOCOL_VERSION,
         client: String::from("deadbrain corp."),
-        capabilities: vec![
-            ("eth".into(), 67),
-            ("eth".into(), 68),
-        ],
+        capabilities: vec![("eth".into(), 67), ("eth".into(), 68)],
         port: 0,
         id: secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
             [1..]
@@ -507,13 +504,15 @@ fn run(
         let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
 
         // update block hash
-        if (reverse) {
+        if reverse {
             *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
         } else {
             *current_hash = block_headers.last().unwrap().hash.to_vec();
 
-            dbg!(block_headers.first().unwrap().number);
-            dbg!(block_headers.last().unwrap().number);
+            dbg!(&block_headers.first().unwrap().number);
+            dbg!(&block_headers.len());
+            dbg!(&block_headers.last().unwrap().number);
+            dbg!(hex::encode(&block_headers.last().unwrap().hash));
         }
 
         /******************
@@ -584,7 +583,9 @@ fn run(
         info!("Blocks n° {}", current_height);
 
         // We already have the first block of the current batch when toward the tip of the chain
-        if (!reverse) { blocks.remove(0); }
+        if (!reverse) {
+            blocks.remove(0);
+        }
 
         // send blocks to the other thread to save in database
         if blocks.len() > 0 {
