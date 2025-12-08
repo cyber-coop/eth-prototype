@@ -508,11 +508,6 @@ fn run(
             *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
         } else {
             *current_hash = block_headers.last().unwrap().hash.to_vec();
-
-            dbg!(&block_headers.first().unwrap().number);
-            dbg!(&block_headers.len());
-            dbg!(&block_headers.last().unwrap().number);
-            dbg!(hex::encode(&block_headers.last().unwrap().hash));
         }
 
         /******************
