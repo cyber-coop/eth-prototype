@@ -6,14 +6,14 @@ use std::env;
 use std::error;
 use std::net::SocketAddr;
 use std::net::TcpStream;
-use std::process;
 use std::str::FromStr;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::thread;
+use std::thread::{self, sleep};
 use std::time::Duration;
+use std::time::SystemTime;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Transaction, Withdrawal};
@@ -417,6 +417,8 @@ fn run(
                         &thread_egress_aes,
                     )
                     .unwrap();
+
+                    continue;
                 }
 
                 if code == 1 {
@@ -507,7 +509,31 @@ fn run(
         if reverse {
             *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
         } else {
-            *current_hash = block_headers.last().unwrap().hash.to_vec();
+            if block_headers.len() == 0 {
+                warn!("No block founds");
+                return Err("No new blocks".into());
+            }
+
+            let last_block = block_headers.last().unwrap();
+
+            // Verify if the block has ben created less than 15 seconds ago. Blocks are being created every 15 seconds.
+            if SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32
+                - last_block.time
+                < 15
+            {
+                trace!("We have the latest created block. Waiting 15 seconds.");
+                sleep(Duration::from_secs(15));
+            } else {
+                if current_hash.as_slice() == last_block.hash.as_slice() {
+                    warn!("Last block is our current block");
+                    return Err("No new blocks".into());
+                }
+            }
+
+            *current_hash = last_block.hash.to_vec();
         }
 
         /******************
@@ -578,7 +604,7 @@ fn run(
         info!("Blocks n° {}", current_height);
 
         // We already have the first block of the current batch when toward the tip of the chain
-        if (!reverse) {
+        if !reverse {
             blocks.remove(0);
         }
 
