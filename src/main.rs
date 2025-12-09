@@ -417,6 +417,8 @@ fn run(
                         &thread_egress_aes,
                     )
                     .unwrap();
+
+                    continue;
                 }
 
                 if code == 1 {
@@ -507,6 +509,11 @@ fn run(
         if reverse {
             *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
         } else {
+            if current_hash.as_slice() == block_headers.last().unwrap().hash.as_slice() {
+                warn!("Last block is our current block");
+                return Err("No new blocks".into());
+            }
+
             *current_hash = block_headers.last().unwrap().hash.to_vec();
         }
 
@@ -578,7 +585,7 @@ fn run(
         info!("Blocks n° {}", current_height);
 
         // We already have the first block of the current batch when toward the tip of the chain
-        if (!reverse) {
+        if !reverse {
             blocks.remove(0);
         }
 
