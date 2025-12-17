@@ -516,13 +516,13 @@ fn run(
 
             let last_block = block_headers.last().unwrap();
 
-            // Verify if the block has ben created less than 15 seconds ago. Blocks are being created every 15 seconds.
+            // Verify if the block has ben created less than 60 seconds ago. Blocks are being created every 15 seconds.
             if SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as u32
                 - last_block.time
-                < 15
+                < 60
             {
                 trace!("We have the latest created block. Waiting 15 seconds.");
                 sleep(Duration::from_secs(15));
