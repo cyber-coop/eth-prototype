@@ -102,9 +102,6 @@ fn main() {
             let row = &result[0];
             let hash = row.try_get(0);
 
-            let number: i32 = row.try_get(1).unwrap();
-            dbg!(number);
-
             match hash {
                 Ok(h) => {
                     current_hash = h;
@@ -385,6 +382,30 @@ fn run(
         )?;
     }
 
+    // If we are already synced and we are saving new blocks, lets verify that we don't have the already highest block from this peer.
+    // Sometimes peers are stuck and don't have new blocks. We need to disconnect from those.
+    if !reverse {
+        // We need to go one block back
+        let mut postgres_client = postgres::Client::connect(&database_params, postgres::NoTls)
+            .expect("to connect to database");
+        let result = postgres_client
+            .query(
+                format!(
+                    "SELECT * FROM {0}.blocks WHERE hash = '\\x{1}';",
+                    network.to_string(),
+                    hex::encode(&their_status.blockhash)
+                )
+                .as_str(),
+                &[],
+            )
+            .unwrap();
+
+        if result.len() > 0 {
+            warn!("We already have their latets block");
+            return Err("Peer not synced".into());
+        }
+    }
+
     // If we don't have blocks in the database we use the best one
     if current_hash.len() == 0 {
         *current_hash = their_status.blockhash;
@@ -480,7 +501,10 @@ fn run(
          *
          ******************/
 
-        info!("Sending GetBlockHeaders message");
+        info!(
+            "Sending GetBlockHeaders message (starting {})",
+            hex::encode(&current_hash)
+        );
 
         let get_blocks_headers =
             eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, reverse);
@@ -537,29 +561,12 @@ fn run(
                 }
 
                 // Delete the block we cannot find anymore
-                info!("Deleting block {}", hex::encode(&hash));
-                postgres_client
-                    .execute(
-                        format!(
-                            "DELETE FROM {}.transactions WHERE block = '\\\\x{}';",
-                            network.to_string(),
-                            hex::encode(&hash)
-                        )
-                        .as_str(),
-                        &[],
-                    )
-                    .unwrap();
-                postgres_client
-                    .execute(
-                        format!(
-                            "DELETE FROM {}.blocks WHERE hash = '\\\\x{}';",
-                            network.to_string(),
-                            hex::encode(&hash)
-                        )
-                        .as_str(),
-                        &[],
-                    )
-                    .unwrap();
+                info!(
+                    "Deleting block {} on network {}",
+                    hex::encode(&hash),
+                    network.to_string()
+                );
+                postgres_client.batch_execute(format!("DELETE FROM {0}.transactions WHERE block = '\\x{1}'; DELETE FROM {0}.blocks WHERE hash = '\\x{1}';", network.to_string(), hex::encode(&hash)).as_str()).unwrap();
 
                 continue;
             }
