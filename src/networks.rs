@@ -123,4 +123,20 @@ impl Network {
             _ => Err("not matching available networks.".into()),
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            &Self::ETHEREUM_ROPSTEN => "ethereum_ropsten",
+            &Self::ETHEREUM_RINKEBY => "ethereum_rinkeby",
+            &Self::ETHEREUM_GOERLI => "ethereum_goerli",
+            &Self::ETHEREUM_SEPOLIA => "ethereum_sepolia",
+            &Self::ETHEREUM_HOLESKY => "ethereum_holesky",
+            &Self::ETHEREUM_HOODI => "ethereum_hoodi",
+            &Self::ETHEREUM_MAINNET => "ethereum_mainnet",
+            &Self::BINANCE_MAINNET => "binance_mainnet",
+            &Self::POLYGON_MAINNET => "polygon_mainnet",
+            _ => panic!("Unknown network"),
+        }
+        .to_string()
+    }
 }
