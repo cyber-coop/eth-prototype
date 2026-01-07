@@ -576,17 +576,18 @@ fn run(
 
             let last_block = block_headers.last().unwrap();
 
-            // Verify if the block has ben created less than 60 seconds ago. Blocks are being created every 15 seconds.
+            // Verify if the block has ben created less than 600 seconds ago (1hr). Blocks are being created every 15 seconds.
             if SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as u32
                 - last_block.time
-                < 60
+                < 600
             {
                 trace!("We have the latest created block. Waiting 15 seconds.");
                 sleep(Duration::from_secs(15));
             } else {
+                // if the last block is older than 1hr we are assuming the node is not receiving new blocks
                 if current_hash.as_slice() == last_block.hash.as_slice() {
                     warn!("Last block is our current block");
                     return Err("No new blocks".into());
