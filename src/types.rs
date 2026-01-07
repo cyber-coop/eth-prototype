@@ -1,12 +1,13 @@
 use num::BigUint;
 use serde::Serialize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct HelloMessage {
     pub protocol_version: u32,
     pub client: String,
     pub capabilities: Vec<(String, u32)>,
     pub port: u16,
+    #[serde(with = "hex::serde")]
     pub id: Vec<u8>,
 }
 

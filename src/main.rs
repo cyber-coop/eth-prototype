@@ -281,7 +281,10 @@ fn run(
     assert_eq!(0x80, uncrypted_body[0]);
     let hello_message = message::parse_hello_message(uncrypted_body[1..].to_vec());
 
-    info!("{:#?}", &hello_message);
+    info!(
+        "HelloMessage {}",
+        serde_json::to_string(&hello_message).unwrap()
+    );
 
     // We need to find the highest eth version it supports
     let _capabilities = serde_json::to_string(&hello_message.capabilities).unwrap();
