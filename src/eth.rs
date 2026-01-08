@@ -1,7 +1,7 @@
 use sha3::{Digest, Keccak256};
 
 use crate::message::{parse_transaction, util_parse_withdrawal};
-use crate::types::{Block, Transaction, Withdrawal};
+use crate::types::{Block, Log, Receipt, Transaction, Withdrawal};
 
 pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
@@ -261,6 +261,29 @@ pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
+pub fn create_get_receipts_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
+    s.begin_unbounded_list();
+    // req ID
+    s.append(&0x42_u8);
+
+    s.begin_list(hashes.len());
+
+    for hash in hashes {
+        s.append(hash);
+    }
+
+    s.finalize_unbounded_list();
+
+    let payload = s.as_raw();
+    let code: Vec<u8> = vec![0x0f + BASE_PROTOCOL_OFFSET];
+
+    let mut enc = snap::raw::Encoder::new();
+    let payload_compressed = enc.compress_vec(&payload).unwrap();
+
+    return [code.to_vec(), payload_compressed].concat();
+}
+
 pub fn parse_block_bodies(
     payload: Vec<u8>,
 ) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
@@ -274,7 +297,7 @@ pub fn parse_block_bodies(
     let empty_list_bytes = vec![0xc0];
 
     // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
-    let block_bodies = r.at(1).unwrap();
+    let block_bodies: rlp::Rlp<'_> = r.at(1).unwrap();
 
     let mut result: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
 
@@ -315,6 +338,61 @@ pub fn parse_block_bodies(
         }
 
         result.push((result_transactions, result_ommers, result_withdrawals));
+    }
+
+    return result;
+}
+
+pub fn parse_receipts(payload: Vec<u8>) -> Vec<Vec<Receipt>> {
+    let mut dec = snap::raw::Decoder::new();
+    let message = dec.decompress_vec(&payload).unwrap();
+
+    let r = rlp::Rlp::new(&message);
+    assert!(r.is_list());
+
+    // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
+    let receipts: rlp::Rlp<'_> = r.at(1).unwrap();
+
+    let mut result: Vec<Vec<Receipt>> = vec![];
+
+    let count = receipts.item_count().unwrap();
+    for i in 0..count {
+        let block_receipts = receipts.at(i).unwrap();
+        assert!(block_receipts.is_list());
+
+        let mut result_block_receipts: Vec<Receipt> = vec![];
+
+        let count_r = block_receipts.item_count().unwrap();
+        for j in 0..count_r {
+            let receipt = block_receipts.at(j).unwrap();
+            dbg!(hex::encode(receipt.as_raw()));
+            assert!(receipt.is_list());
+
+            let tx_type: u8 = receipt.at(0).unwrap().as_val().unwrap();
+            let post_state_or_status: Vec<u8> = receipt.at(1).unwrap().as_val().unwrap();
+            let cumulative_gas: u64 = receipt.at(2).unwrap().as_val().unwrap();
+
+            let raw_logs = receipt.at(3).unwrap();
+            let count_log = raw_logs.item_count().unwrap();
+
+            let mut logs: Vec<Log> = vec![];
+            for k in 0..count_log {
+                let log = raw_logs.at(k).unwrap();
+                let l = util_parse_log(log.as_raw().to_vec());
+
+                logs.push(l);
+            }
+
+            let r = Receipt {
+                tx_type,
+                post_state_or_status,
+                cumulative_gas,
+                logs,
+            };
+            result_block_receipts.push(r);
+        }
+
+        result.push(result_block_receipts);
     }
 
     return result;
@@ -373,6 +451,28 @@ pub fn util_parse_block_header(payload: Vec<u8>) -> Block {
         block_nonce,
         basefee_per_gas,
         withdrawals_root,
+    };
+}
+
+fn util_parse_log(payload: Vec<u8>) -> Log {
+    let r = rlp::Rlp::new(&payload);
+    assert!(r.is_list());
+
+    let address: Vec<u8> = r.at(0).unwrap().as_val().unwrap();
+    let raw_topics = r.at(1).unwrap();
+    let count_topics = raw_topics.item_count().unwrap();
+    let data: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
+
+    let mut topics: Vec<Vec<u8>> = vec![];
+    for i in 0..count_topics {
+        let t: Vec<u8> = raw_topics.at(i).unwrap().as_val().unwrap();
+        topics.push(t);
+    }
+
+    return Log {
+        address,
+        topics,
+        data,
     };
 }
 

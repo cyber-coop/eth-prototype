@@ -76,6 +76,22 @@ pub struct Withdrawal {
     pub amount: u64,
 }
 
+// see https://github.com/ethereum/devp2p/blob/master/caps/eth.md#receipt-encoding-and-validity
+#[derive(Clone, Debug)]
+pub struct Receipt {
+    pub tx_type: u8,
+    pub post_state_or_status: Vec<u8>,
+    pub cumulative_gas: u64,
+    pub logs: Vec<Log>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Log {
+    pub address: Vec<u8>,
+    pub topics: Vec<Vec<u8>>, // topics: [topic₁: B, topic₂: B, ...],
+    pub data: Vec<u8>,
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::HelloMessage;

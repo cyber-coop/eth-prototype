@@ -16,7 +16,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use eth_prototype::eth;
-use eth_prototype::types::{Block, Transaction, Withdrawal};
+use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
 use eth_prototype::{configs, database, message, networks, types, utils};
 
 #[macro_use]
@@ -676,6 +676,48 @@ fn run(
             info!(
                 "Handling BlockBodies message ({}/{} block bodies received)",
                 transactions.len(),
+                hashes.len()
+            );
+        }
+
+        /******************
+         *
+         *  Send GetReceipts message
+         *
+         ******************/
+
+        // TODO: implement ETH 69 to be able to get receipts. Older protocols support it but are more of a struggle to implement.
+        info!("Sending GetReceipts message");
+        let mut receipts: Vec<Vec<Receipt>> = vec![];
+
+        while receipts.len() < hashes.len() {
+            let get_receipts = eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec());
+            utils::send_message(get_receipts, &mut stream, &mut egress_mac, &mut egress_aes)?;
+
+            /******************
+             *
+             *  Handle Receipts message
+             *
+             ******************/
+
+            let mut uncrypted_body: Vec<u8>;
+            let mut code;
+            loop {
+                uncrypted_body = rx_tcp.recv()?;
+
+                code = uncrypted_body[0] - 16;
+                if code == 16 {
+                    break;
+                }
+            }
+            assert_eq!(code, 16);
+
+            let tmp_rpt: Vec<Vec<Receipt>> = eth::parse_receipts(uncrypted_body[1..].to_vec());
+            receipts.extend(tmp_rpt);
+
+            info!(
+                "Handling Receipts message ({}/{} block receipts received)",
+                receipts.len(),
                 hashes.len()
             );
         }
