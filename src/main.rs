@@ -293,7 +293,7 @@ fn run(
     let mut version = 0;
     for capability in &hello_message.capabilities {
         if capability.0.to_string() == "eth" {
-            if capability.1 > version && capability.1 < 69 {
+            if capability.1 > version {
                 version = capability.1;
             }
         }
@@ -311,7 +311,7 @@ fn run(
     let hello_message = types::HelloMessage {
         protocol_version: message::BASE_PROTOCOL_VERSION,
         client: String::from("deadbrain corp."),
-        capabilities: vec![("eth".into(), 67), ("eth".into(), 68)],
+        capabilities: vec![("eth".into(), 67), ("eth".into(), 68), ("eth".into(), 69)],
         port: 0,
         id: secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
             [1..]
@@ -328,22 +328,35 @@ fn run(
 
     info!("Sending STATUS message");
 
-    let status = eth::Status {
-        version,
-        network_id: network.network_id,
-        td: network
-            .head_td
-            .to_be_bytes()
-            .iter()
-            .skip_while(|x| **x == 0)
-            .map(|x| *x)
-            .collect(), // Maybe I should just have change the status type. But this is needed for now to remove the zeroes at the begining
-        blockhash: network.genesis_hash.to_vec(),
-        genesis: network.genesis_hash.to_vec(),
-        fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
-    };
-
-    let payload = eth::create_status_message(status);
+    let payload: Vec<u8>;
+    if version == 69 {
+        let status = eth::Status69 {
+            version,
+            network_id: network.network_id,
+            genesis: network.genesis_hash.to_vec(),
+            fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
+            earliest: 0,
+            latest: 0,
+            latest_hash: network.genesis_hash.to_vec(),
+        };
+        payload = eth::create_eth69_status_message(status);
+    } else {
+        let status = eth::Status {
+            version,
+            network_id: network.network_id,
+            td: network
+                .head_td
+                .to_be_bytes()
+                .iter()
+                .skip_while(|x| **x == 0)
+                .map(|x| *x)
+                .collect(), // Maybe I should just have change the status type. But this is needed for now to remove the zeroes at the begining
+            blockhash: network.genesis_hash.to_vec(),
+            genesis: network.genesis_hash.to_vec(),
+            fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
+        };
+        payload = eth::create_status_message(status);
+    }
     utils::send_message(payload, &mut stream, &mut egress_mac, &mut egress_aes)?;
 
     /******************
@@ -359,15 +372,34 @@ fn run(
 
         return Err("Disconnected peer".into());
     }
-    let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
 
-    if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
-        warn!(
-            "Wrong Fork ID. Expected {} but got {}",
-            hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
-            hex::encode(their_status.fork_id.0)
-        );
-        return Err("Incompatible fork".into());
+    let their_blockhash: Vec<u8>;
+    if version == 69 {
+        let their_status = eth::parse_eth69_status_message(uncrypted_body[1..].to_vec()).unwrap();
+
+        if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
+            warn!(
+                "Wrong Fork ID. Expected {} but got {}",
+                hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
+                hex::encode(their_status.fork_id.0)
+            );
+            return Err("Incompatible fork".into());
+        }
+
+        their_blockhash = their_status.latest_hash;
+    } else {
+        let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
+
+        if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
+            warn!(
+                "Wrong Fork ID. Expected {} but got {}",
+                hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
+                hex::encode(their_status.fork_id.0)
+            );
+            return Err("Incompatible fork".into());
+        }
+
+        their_blockhash = their_status.blockhash;
     }
 
     /******************
@@ -396,7 +428,7 @@ fn run(
                 format!(
                     "SELECT * FROM {0}.blocks WHERE hash = '\\x{1}';",
                     network.to_string(),
-                    hex::encode(&their_status.blockhash)
+                    hex::encode(&their_blockhash)
                 )
                 .as_str(),
                 &[],
@@ -411,7 +443,7 @@ fn run(
 
     // If we don't have blocks in the database we use the best one
     if current_hash.len() == 0 {
-        *current_hash = their_status.blockhash;
+        *current_hash = their_blockhash;
     }
 
     /****************************
