@@ -74,6 +74,80 @@ pub fn parse_status_message(payload: Vec<u8>) -> Option<Status> {
     return Some(status);
 }
 
+#[derive(Debug)]
+pub struct Status69 {
+    pub version: u32,
+    pub network_id: u64,
+    pub genesis: Vec<u8>,
+    pub fork_id: (Vec<u8>, u64), // [Fork Hash, Next Fork]
+    pub earliest: u32,           // number of the earliest available full block
+    pub latest: u32,             // number of the latest available full block number
+    pub latest_hash: Vec<u8>,    // hash of the latest available full block
+}
+
+pub fn parse_eth69_status_message(payload: Vec<u8>) -> Option<Status69> {
+    let mut dec = snap::raw::Decoder::new();
+    let message = dec.decompress_vec(&payload).unwrap();
+
+    let r = rlp::Rlp::new(&message);
+    assert!(r.is_list());
+
+    if r.is_empty() {
+        return None;
+    }
+
+    let version: u32 = r.at(0).unwrap().as_val().unwrap();
+    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
+    let genesis: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
+    // get forkid info
+    let forkidrlp = r.at(3).unwrap();
+    assert!(forkidrlp.is_list());
+    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
+    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+
+    let earliest: u32 = r.at(4).unwrap().as_val().unwrap();
+    let latest: u32 = r.at(5).unwrap().as_val().unwrap();
+    let latest_hash: Vec<u8> = r.at(6).unwrap().as_val().unwrap();
+
+    let status = Status69 {
+        version,
+        network_id,
+        genesis,
+        fork_id: (fork_hash, fork_next),
+        earliest,
+        latest,
+        latest_hash,
+    };
+
+    return Some(status);
+}
+
+// Create status message following the ETH protocol
+pub fn create_eth69_status_message(status: Status69) -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
+    s.begin_unbounded_list();
+    s.append(&status.version);
+    s.append(&status.network_id);
+    s.append(&status.genesis);
+    s.begin_list(2);
+    s.append(&status.fork_id.0);
+    s.append(&status.fork_id.1);
+
+    s.append(&status.earliest);
+    s.append(&status.latest);
+    s.append(&status.latest_hash);
+
+    s.finalize_unbounded_list();
+
+    let payload = s.as_raw();
+    let code: Vec<u8> = vec![0x00 + BASE_PROTOCOL_OFFSET];
+
+    let mut enc = snap::raw::Encoder::new();
+    let payload_compressed = enc.compress_vec(&payload).unwrap();
+
+    return [code.to_vec(), payload_compressed].concat();
+}
+
 pub fn create_get_block_headers_message(
     hash: &Vec<u8>,
     block_num: usize,
@@ -323,6 +397,8 @@ pub fn create_upgrade_status_message() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use crate::eth::parse_eth69_status_message;
+
     use super::{create_upgrade_status_message, BASE_PROTOCOL_OFFSET};
 
     #[test]
@@ -335,5 +411,17 @@ mod tests {
         let message = dec.decompress_vec(&payload[1..].to_vec()).unwrap();
 
         assert_eq!(hex::encode(&message), "c2c180");
+    }
+
+    #[test]
+    fn test_decode_eth69_status_message() {
+        let message = hex::decode("f8534583088bb0a0bbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971bc68423aa13518080831e998fa007f5041cb8061d00b9e521a658106e645c501beb56f3a53f3df0749511b57a82").unwrap();
+
+        let mut enc = snap::raw::Encoder::new();
+        let payload = enc.compress_vec(&message).unwrap();
+
+        let status = parse_eth69_status_message(payload).unwrap();
+
+        assert_eq!(status.version, 69);
     }
 }
