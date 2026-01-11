@@ -365,7 +365,6 @@ pub fn parse_receipts(payload: Vec<u8>) -> Vec<Vec<Receipt>> {
         let count_r = block_receipts.item_count().unwrap();
         for j in 0..count_r {
             let receipt = block_receipts.at(j).unwrap();
-            dbg!(hex::encode(receipt.as_raw()));
             assert!(receipt.is_list());
 
             let tx_type: u8 = receipt.at(0).unwrap().as_val().unwrap();
