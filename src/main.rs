@@ -420,13 +420,12 @@ fn run(
     // If we are already synced and we are saving new blocks, lets verify that we don't have the already highest block from this peer.
     // Sometimes peers are stuck and don't have new blocks. We need to disconnect from those.
     if !reverse {
-        // We need to go one block back
         let mut postgres_client = postgres::Client::connect(&database_params, postgres::NoTls)
             .expect("to connect to database");
         let result = postgres_client
             .query(
                 format!(
-                    "SELECT * FROM {0}.blocks WHERE hash = '\\x{1}';",
+                    "SELECT number FROM {0}.blocks WHERE hash = '\\x{1}';",
                     network.to_string(),
                     hex::encode(&their_blockhash)
                 )
@@ -436,6 +435,9 @@ fn run(
             .unwrap();
 
         if result.len() > 0 {
+            let row = &result[0];
+            let number: i32 = row.try_get(0).unwrap();
+            dbg!(number);
             warn!("We already have their latets block");
             return Err("Peer not synced".into());
         }
