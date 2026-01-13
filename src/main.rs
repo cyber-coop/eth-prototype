@@ -136,8 +136,13 @@ fn main() {
 
         // while recv save blocks in database
         loop {
-            let blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-                rx.recv().unwrap();
+            let blocks: Vec<(
+                Block,
+                Vec<Transaction>,
+                Vec<Block>,
+                Vec<Withdrawal>,
+                Vec<Receipt>,
+            )> = rx.recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -183,7 +188,15 @@ fn run(
     database_params: &String,
     current_hash: &mut Vec<u8>,
     reverse: bool,
-    tx: &SyncSender<Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>>,
+    tx: &SyncSender<
+        Vec<(
+            Block,
+            Vec<Transaction>,
+            Vec<Block>,
+            Vec<Withdrawal>,
+            Vec<Receipt>,
+        )>,
+    >,
 ) -> Result<(), Box<dyn error::Error>> {
     /******************
      *
@@ -722,16 +735,23 @@ fn run(
             );
         }
 
-        let mut blocks: Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
+        let mut blocks: Vec<(
+            Block,
+            Vec<Transaction>,
+            Vec<Block>,
+            Vec<Withdrawal>,
+            Vec<Receipt>,
+        )> = vec![];
         let t_iter = transactions.iter();
         t_iter
             .enumerate()
             .for_each(|(i, (txs, ommers, withdrawals))| {
                 blocks.push((
                     block_headers[i].clone(),
-                    txs.to_vec(),
-                    ommers.to_vec(),
-                    withdrawals.to_vec(),
+                    txs.to_owned(),
+                    ommers.to_owned(),
+                    withdrawals.to_owned(),
+                    receipts[i].clone(),
                 ));
             });
 

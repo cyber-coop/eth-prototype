@@ -85,10 +85,15 @@ pub struct Receipt {
     pub logs: Vec<Log>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Topic(#[serde(with = "hex::serde")] pub Vec<u8>);
+
+#[derive(Clone, Debug, Serialize)]
 pub struct Log {
+    #[serde(with = "hex::serde")]
     pub address: Vec<u8>,
-    pub topics: Vec<Vec<u8>>, // topics: [topic₁: B, topic₂: B, ...],
+    pub topics: Vec<Topic>, // topics: [topic₁: B, topic₂: B, ...],
+    #[serde(with = "hex::serde")]
     pub data: Vec<u8>,
 }
 

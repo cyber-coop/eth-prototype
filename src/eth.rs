@@ -1,7 +1,7 @@
 use sha3::{Digest, Keccak256};
 
 use crate::message::{parse_transaction, util_parse_withdrawal};
-use crate::types::{Block, Log, Receipt, Transaction, Withdrawal};
+use crate::types::{Block, Log, Receipt, Topic, Transaction, Withdrawal};
 
 pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
@@ -462,10 +462,10 @@ fn util_parse_log(payload: Vec<u8>) -> Log {
     let count_topics = raw_topics.item_count().unwrap();
     let data: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
 
-    let mut topics: Vec<Vec<u8>> = vec![];
+    let mut topics: Vec<Topic> = vec![];
     for i in 0..count_topics {
         let t: Vec<u8> = raw_topics.at(i).unwrap().as_val().unwrap();
-        topics.push(t);
+        topics.push(Topic(t));
     }
 
     return Log {
