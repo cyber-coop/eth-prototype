@@ -2,7 +2,7 @@ use postgres::Client;
 use std::io::prelude::*;
 use std::time::Instant;
 
-use crate::types::{Block, Transaction, Withdrawal};
+use crate::types::{Block, Receipt, Transaction, Withdrawal};
 use crate::utils;
 
 // TODO: comment the column name
@@ -82,6 +82,13 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         address BYTEA NOT NULL,
         amount BIGINT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS {schema_name}.receipts (
+        txid BYTEA NOT NULL,
+        tx_type SMALLINT NOT NULL,
+        post_state_or_status BYTEA NOT NULL,
+        cumulative_gas BIGINT NOT NULL,
+        logs JSONB
+    );
     "
     );
 
@@ -89,7 +96,13 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
 }
 
 pub fn save_blocks(
-    blocks: &Vec<(Block, Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)>,
+    blocks: &Vec<(
+        Block,
+        Vec<Transaction>,
+        Vec<Block>,
+        Vec<Withdrawal>,
+        Vec<Receipt>,
+    )>,
     schema_name: &String,
     postgres_client: &mut Client,
 ) {
@@ -102,9 +115,10 @@ pub fn save_blocks(
     // we have a 1Gigabyte limit and the transactions bulk will go over that limit so we split it
     let mut transactions_strings: Vec<String> = vec![];
     let mut contracts_string: String = String::new();
+    let mut receipts_string: String = String::new();
 
     info!("starting to format blocks and transactions");
-    blocks.iter().for_each(|(b, txs, ommers, withdrawals)| {
+    blocks.iter().for_each(|(b, txs, ommers, withdrawals, receipts)| {
         let tmp = format!(
             "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
             hex::encode(&b.hash),
@@ -131,7 +145,7 @@ pub fn save_blocks(
         let mut index = 0;
         txs.iter().for_each(|t| {
             let tmp = format!(
-                "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{}\n",
+                "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{}\n", // Important! We don't end with a ';'
                 index,
                 hex::encode(&t.txid),
                 t.tx_type,
@@ -160,7 +174,7 @@ pub fn save_blocks(
             if t.to.is_empty() {
                 let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
                 let tmp = format!(
-                    "\\\\x{};\\\\x{}\n",
+                    "\\\\x{};\\\\x{}\n", // Important! We don't end with a ';'
                 hex::encode(&t.txid),
                 hex::encode(&tx_address));
                 contracts_string.push_str(&tmp);
@@ -207,6 +221,16 @@ pub fn save_blocks(
             );
             withdrawals_string.push_str(&tmp);
         });
+        receipts.iter().enumerate().for_each(|(i, r)| {
+            let tmp = format!("\\\\x{};{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
+                hex::encode(&txs[i].txid),
+                r.tx_type,
+                hex::encode(&r.post_state_or_status),
+                r.cumulative_gas,
+                serde_json::to_value(&r.logs).unwrap(),
+            );
+            receipts_string.push_str(&tmp);
+        });
     });
 
     transactions_strings.push(transactions_string.clone());
@@ -248,6 +272,14 @@ pub fn save_blocks(
         .write_all(withdrawals_string.as_bytes())
         .unwrap();
     withdrawals_writer.finish().unwrap();
+
+    let mut receipt_writer = transaction
+        .copy_in(format!("COPY {}.receipts FROM stdin (DELIMITER ';')", schema_name).as_str())
+        .unwrap();
+    receipt_writer
+        .write_all(receipts_string.as_bytes())
+        .unwrap();
+    receipt_writer.finish().unwrap();
 
     let mut chunk_index = 0;
     let _number_of_chunks = transactions_strings.len();

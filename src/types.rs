@@ -76,6 +76,27 @@ pub struct Withdrawal {
     pub amount: u64,
 }
 
+// see https://github.com/ethereum/devp2p/blob/master/caps/eth.md#receipt-encoding-and-validity
+#[derive(Clone, Debug)]
+pub struct Receipt {
+    pub tx_type: u8,
+    pub post_state_or_status: Vec<u8>,
+    pub cumulative_gas: u64,
+    pub logs: Vec<Log>,
+}
+
+#[derive(Serialize, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Topic(#[serde(with = "hex::serde")] pub Vec<u8>);
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Log {
+    #[serde(with = "hex::serde")]
+    pub address: Vec<u8>,
+    pub topics: Vec<Topic>, // topics: [topic₁: B, topic₂: B, ...],
+    #[serde(with = "hex::serde")]
+    pub data: Vec<u8>,
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::HelloMessage;
