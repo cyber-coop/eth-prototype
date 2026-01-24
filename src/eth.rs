@@ -321,8 +321,9 @@ pub fn parse_block_bodies(
 
         for j in 0..count_tx {
             let transaction = transactions.at(j).unwrap();
-            let t = parse_transaction(transaction.as_raw().to_vec());
-            result_transactions.push(t);
+            if let Some(t) = parse_transaction(transaction.as_raw().to_vec()) {
+                result_transactions.push(t);
+            };
         }
 
         for k in 0..count_om {
