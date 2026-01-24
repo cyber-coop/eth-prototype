@@ -699,14 +699,14 @@ fn run(
          *
          ******************/
 
-
         // TODO: implement ETH 69 to be able to get receipts. Older protocols support it but are more of a struggle to implement.
-        if version == 69 {
             info!("Sending GetReceipts message");
             let mut receipts: Vec<Vec<Receipt>> = vec![];
-
+        
+        if version == 69 {
             while receipts.len() < hashes.len() {
-                let get_receipts = eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec());
+                let get_receipts =
+                    eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec());
                 utils::send_message(get_receipts, &mut stream, &mut egress_mac, &mut egress_aes)?;
 
                 /******************
@@ -754,7 +754,7 @@ fn run(
                     txs.to_owned(),
                     ommers.to_owned(),
                     withdrawals.to_owned(),
-                    receipts[i].clone(),
+                    if version == 69 { receipts[i].clone() } else { vec![] },
                 ));
             });
 
