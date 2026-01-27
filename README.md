@@ -17,6 +17,8 @@ ethereum_holesky
 ethereum_hoodi
 ethereum_mainnet
 binance_mainnet
+polygon_mainnet
+base_mainnet
 ```
 
 ## Requirements
