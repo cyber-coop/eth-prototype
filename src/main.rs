@@ -147,7 +147,7 @@ fn main() {
 
             // We are synced
             if network.genesis_hash.to_vec() == blocks.last().unwrap().0.hash.to_vec() {
-                info!("We are synced !");
+                info!("We are synced ! We are creating the indexes on the tables... This will take a while.");
                 // Open, read and execute SQL scripts at the end of sync
                 utils::open_exec_sql_file(&network_arg, &mut postgres_client);
                 break;
