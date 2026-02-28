@@ -1,22 +1,26 @@
 ##### BUILDER #####
-FROM rust:latest AS builder
+FROM rust:1.93-slim-trixie AS builder
 
 WORKDIR /usr/src/eth-prototype
+
 COPY . .
-RUN cargo install --path .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/src/eth-prototype/target \
+    cargo install --path .
 
 ##### RUNNER #####
-FROM debian:bookworm
+FROM debian:trixie-slim
 
 LABEL author="Lola Rigaut-Luczak <me@laflemme.lol>"
 LABEL description="Custom node that allow indexing blocks and transactions from block chains (Ethereum version)."
 
 COPY --from=builder /usr/local/cargo/bin/eth-prototype /usr/local/bin/eth-prototype
+COPY ./sql /sql
 
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # default env
 ENV RUST_LOG="eth_prototype=info"
-ENV NETWORK="ethereum_rinkeby"
+ENV NETWORK="ethereum_mainnet"
 
-CMD eth-prototype ${NETWORK}
+ENTRYPOINT ["/bin/sh", "-c", "exec eth-prototype ${NETWORK}"]

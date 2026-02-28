@@ -15,6 +15,7 @@ ALTER TABLE ethereum_sepolia.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (c
 --- Create Index
 ---- We use B-Tree indexing because later we want to do more insert of new transactions and it is supposedly faster 
 CREATE INDEX i_toaddress ON ethereum_sepolia.transactions using btree (toaddress);
+CREATE INDEX i_fromaddress ON ethereum_sepolia.transactions using btree (fromaddress);
 CREATE INDEX i_blocknumber ON ethereum_sepolia.blocks using btree (number);
 CREATE INDEX i_txid ON ethereum_sepolia.transactions using btree (txid);
 CREATE INDEX i_block ON ethereum_sepolia.transactions using btree (block);

@@ -15,6 +15,7 @@ ALTER TABLE polygon_mainnet.ommers ADD CONSTRAINT ommersblock_fk FOREIGN KEY (ca
 --- Create Index
 ---- We use B-Tree indexing because we want to do more inserts of new transactions later and it is supposedly faster 
 CREATE INDEX i_toaddress ON polygon_mainnet.transactions using btree (toaddress);
+CREATE INDEX i_fromaddress ON polygon_mainnet.transactions using btree (fromaddress);
 CREATE INDEX i_blocknumber ON polygon_mainnet.blocks using btree (number);
 CREATE INDEX i_txid ON polygon_mainnet.transactions using btree (txid);
 CREATE INDEX i_block ON polygon_mainnet.transactions using btree (block);
