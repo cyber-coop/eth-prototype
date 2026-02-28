@@ -471,7 +471,7 @@ fn run(
 
     let (tx_tcp, rx_tcp) = channel();
 
-    let _tcp_handle = thread::spawn(move || {
+    let tcp_handle = thread::spawn(move || {
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
@@ -538,7 +538,9 @@ fn run(
                 .unwrap();
             }
 
-            tx_tcp.send(uncrypted_body).unwrap();
+            if tx_tcp.send(uncrypted_body).is_err() {
+                break;
+            }
         }
     });
 
@@ -777,6 +779,8 @@ fn run(
 
         if current_height == 0 {
             info!("Data fully synced");
+
+            drop(tcp_handle);
 
             break;
         }
