@@ -15,7 +15,6 @@ LABEL author="Lola Rigaut-Luczak <me@laflemme.lol>"
 LABEL description="Custom node that allow indexing blocks and transactions from block chains (Ethereum version)."
 
 COPY --from=builder /usr/local/cargo/bin/eth-prototype /usr/local/bin/eth-prototype
-COPY ./sql /sql
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 

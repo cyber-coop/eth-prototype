@@ -9,7 +9,6 @@ use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
 use std::error;
-use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -426,10 +425,19 @@ pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
 }
 
 pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
-    let mut f = File::open(format!("/sql/{}.sql", network_arg)).expect("Failed opening file");
-    let mut contents = String::new();
-    let _ = f.read_to_string(&mut contents);
-    postgres_client.batch_execute(&contents).unwrap();
+    let contents = match network_arg.as_str() {
+        "ethereum_mainnet" => include_str!("../sql/ethereum_mainnet.sql"),
+        "ethereum_sepolia" => include_str!("../sql/ethereum_sepolia.sql"),
+        "ethereum_holesky" => include_str!("../sql/ethereum_holesky.sql"),
+        "ethereum_goerli" => include_str!("../sql/ethereum_goerli.sql"),
+        "ethereum_ropsten" => include_str!("../sql/ethereum_ropsten.sql"),
+        "ethereum_rinkeby" => include_str!("../sql/ethereum_rinkeby.sql"),
+        "polygon_mainnet" => include_str!("../sql/polygon_mainnet.sql"),
+        "binance_mainnet" => include_str!("../sql/binance_mainnet.sql"),
+        "base_mainnet" => include_str!("../sql/base_mainnet.sql"),
+        _ => panic!("Unknown network: {}", network_arg),
+    };
+    postgres_client.batch_execute(contents).unwrap();
 }
 
 pub fn send_eip8_auth_message(
