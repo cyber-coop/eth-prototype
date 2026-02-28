@@ -425,19 +425,8 @@ pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
 }
 
 pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
-    let contents = match network_arg.as_str() {
-        "ethereum_mainnet" => include_str!("../sql/ethereum_mainnet.sql"),
-        "ethereum_sepolia" => include_str!("../sql/ethereum_sepolia.sql"),
-        "ethereum_holesky" => include_str!("../sql/ethereum_holesky.sql"),
-        "ethereum_goerli" => include_str!("../sql/ethereum_goerli.sql"),
-        "ethereum_ropsten" => include_str!("../sql/ethereum_ropsten.sql"),
-        "ethereum_rinkeby" => include_str!("../sql/ethereum_rinkeby.sql"),
-        "polygon_mainnet" => include_str!("../sql/polygon_mainnet.sql"),
-        "binance_mainnet" => include_str!("../sql/binance_mainnet.sql"),
-        "base_mainnet" => include_str!("../sql/base_mainnet.sql"),
-        _ => panic!("Unknown network: {}", network_arg),
-    };
-    postgres_client.batch_execute(contents).unwrap();
+    let contents = include_str!("../sql/create_indexes.sql").replace("{schema}", network_arg);
+    postgres_client.batch_execute(&contents).unwrap();
 }
 
 pub fn send_eip8_auth_message(
