@@ -1,6 +1,6 @@
 use crate::types::{AccessList, AuthorizationList, Hash};
-use crate::types::{HelloMessage, Transaction};
 use crate::types::{Authorization, Withdrawal};
+use crate::types::{HelloMessage, Transaction};
 use crate::utils;
 use num::BigUint;
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
