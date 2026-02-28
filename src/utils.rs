@@ -9,7 +9,6 @@ use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
 use std::error;
-use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -426,9 +425,7 @@ pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
 }
 
 pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
-    let mut f = File::open(format!("sql/{}.sql", network_arg)).expect("Failed opening file");
-    let mut contents = String::new();
-    let _ = f.read_to_string(&mut contents);
+    let contents = include_str!("../sql/create_indexes.sql").replace("{schema}", network_arg);
     postgres_client.batch_execute(&contents).unwrap();
 }
 

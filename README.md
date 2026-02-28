@@ -6,7 +6,7 @@ In its current state, the indexer takes 48h to index mainnet from scratch.
 
 ### Compatible networks
 
-This Ethereum P2P indexer can run on the following networks **(only on eth/67 and eth/68)**.
+This Ethereum P2P indexer can run on the following networks **(only on eth/67 and eth/68 and eth/69)**.
 
 ```
 ethereum_ropsten
@@ -20,6 +20,8 @@ binance_mainnet
 polygon_mainnet
 base_mainnet
 ```
+
+NOTES: getting recipts only work on **eth/69** for now. 
 
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install)
@@ -41,11 +43,14 @@ user = "postgres"
 password = "wow"
 dbname = "blockchains"
 
-# Mainnet peer to connect to
-[peer]
+# Mainnet peers to connect to
+[[peers]]
 ip = "127.0.0.1"
 port = 30303
 remote_id = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+[[peers]]
+...
 
 ```
 
