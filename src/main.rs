@@ -5,15 +5,13 @@ use secp256k1::{rand, SecretKey};
 use std::env;
 use std::error;
 use std::net::SocketAddr;
-use std::net::TcpStream;
 use std::str::FromStr;
-use std::sync::mpsc::SyncSender;
-use std::sync::mpsc::{channel, sync_channel};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::thread::{self, sleep};
+use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
+use tokio::net::TcpStream;
 
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
@@ -125,7 +123,15 @@ fn main() {
      ********************/
 
     // Create a queue with a maximum of 102400 blocks (100 * 1024 = 102400 blocks). We query blocks by batch of 1024 blocks.
-    let (tx, rx) = sync_channel(100);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<
+        Vec<(
+            Block,
+            Vec<Transaction>,
+            Vec<Block>,
+            Vec<Withdrawal>,
+            Vec<Receipt>,
+        )>,
+    >(100);
 
     let db_params = database_params.clone();
     let database_handle = thread::spawn(move || {
@@ -142,7 +148,7 @@ fn main() {
                 Vec<Block>,
                 Vec<Withdrawal>,
                 Vec<Receipt>,
-            )> = rx.recv().unwrap();
+            )> = rx.blocking_recv().unwrap();
             database::save_blocks(&blocks, &network_arg, &mut postgres_client);
 
             // We are synced
@@ -157,38 +163,44 @@ fn main() {
         info!("Closing thread!");
     });
 
-    for peer in config.peers {
-        match run(
-            peer,
-            network,
-            &database_params,
-            &mut current_hash,
-            reverse,
-            &tx,
-        ) {
-            Ok(()) => {
-                // We are done
-                break;
-            }
-            Err(_) => {
-                // next peer
-                continue;
-            }
-        };
-    }
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        for peer in config.peers {
+            match run(
+                peer,
+                network,
+                &database_params,
+                &mut current_hash,
+                reverse,
+                &tx,
+            )
+            .await
+            {
+                Ok(()) => {
+                    // We are done
+                    break;
+                }
+                Err(_) => {
+                    // next peer
+                    continue;
+                }
+            };
+        }
 
-    info!("Tried all peers");
+        info!("Tried all peers");
+    });
+
     // need to wait for database thread to finish
     database_handle.join().unwrap();
 }
 
-fn run(
+async fn run(
     peer: Peer,
     network: Network,
     database_params: &String,
     current_hash: &mut Vec<u8>,
     reverse: bool,
-    tx: &SyncSender<
+    tx: &tokio::sync::mpsc::Sender<
         Vec<(
             Block,
             Vec<Transaction>,
@@ -203,11 +215,11 @@ fn run(
      *  Connect to peer
      *
      ******************/
-    let mut stream = TcpStream::connect_timeout(
-        &SocketAddr::from_str(&format!("{}:{}", peer.ip, peer.port)).unwrap(),
+    let mut stream = tokio::time::timeout(
         Duration::from_secs(3),
-    )?;
-    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+        TcpStream::connect(SocketAddr::from_str(&format!("{}:{}", peer.ip, peer.port)).unwrap()),
+    )
+    .await??;
 
     let private_key = SecretKey::new(&mut rand::thread_rng())
         .secret_bytes()
@@ -235,10 +247,10 @@ fn run(
 
     // send the message
     info!("Sending EIP8 Auth message");
-    utils::send_eip8_auth_message(&init_msg, &mut stream)?;
+    utils::send_eip8_auth_message(&init_msg, &mut stream).await?;
 
     info!("waiting for answer... (ACK message)");
-    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream)?;
+    let (payload, shared_mac_data) = utils::read_ack_message(&mut stream).await?;
 
     /******************
      *
@@ -269,8 +281,9 @@ fn run(
         remote_data,
         init_msg,
     );
-    let mut egress_aes = Arc::new(Mutex::new(egress_aes));
-    let mut egress_mac = Arc::new(Mutex::new(egress_mac));
+    let egress_aes = Arc::new(Mutex::new(egress_aes));
+    let egress_mac = Arc::new(Mutex::new(egress_mac));
+    let stream = Arc::new(tokio::sync::Mutex::new(stream));
 
     info!("Frame setup done !");
 
@@ -282,7 +295,7 @@ fn run(
      *
      ******************/
 
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
+    let uncrypted_body = utils::read_message(&stream, &mut ingress_mac, &mut ingress_aes).await?;
 
     if uncrypted_body[0] == 0x01 {
         warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
@@ -331,7 +344,7 @@ fn run(
             .to_vec(),
     };
     let hello = message::create_hello_message(hello_message);
-    utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes)?;
+    utils::send_message(hello, &stream, &egress_mac, &egress_aes).await?;
 
     /******************
      *
@@ -370,7 +383,7 @@ fn run(
         };
         payload = eth::create_status_message(status);
     }
-    utils::send_message(payload, &mut stream, &mut egress_mac, &mut egress_aes)?;
+    utils::send_message(payload, &stream, &egress_mac, &egress_aes).await?;
 
     /******************
      *
@@ -379,7 +392,7 @@ fn run(
      ******************/
 
     info!("Handling STATUS message");
-    let uncrypted_body = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes)?;
+    let uncrypted_body = utils::read_message(&stream, &mut ingress_mac, &mut ingress_aes).await?;
     if uncrypted_body[0] == 0x01 {
         warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
 
@@ -422,12 +435,7 @@ fn run(
      ******************/
     if network == networks::Network::BINANCE_MAINNET {
         let upgrade_status = eth::create_upgrade_status_message();
-        utils::send_message(
-            upgrade_status,
-            &mut stream,
-            &mut egress_mac,
-            &mut egress_aes,
-        )?;
+        utils::send_message(upgrade_status, &stream, &egress_mac, &egress_aes).await?;
     }
 
     // If we are already synced and we are saving new blocks, lets verify that we don't have the already highest block from this peer.
@@ -465,18 +473,19 @@ fn run(
      *
      ****************************/
 
-    let mut thread_stream = stream.try_clone().unwrap();
+    let thread_stream = Arc::clone(&stream);
     let thread_egress_mac = Arc::clone(&egress_mac);
     let thread_egress_aes = Arc::clone(&egress_aes);
 
-    let (tx_tcp, rx_tcp) = channel();
+    let (tx_tcp, mut rx_tcp) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
 
-    let tcp_handle = thread::spawn(move || {
+    let tcp_handle = tokio::spawn(async move {
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
             uncrypted_body =
-                utils::read_message(&mut thread_stream, &mut ingress_mac, &mut ingress_aes)
+                utils::read_message(&thread_stream, &mut ingress_mac, &mut ingress_aes)
+                    .await
                     .unwrap();
 
             // handle RLPx message
@@ -489,10 +498,11 @@ fn run(
 
                     utils::send_message(
                         pong,
-                        &mut thread_stream,
+                        &thread_stream,
                         &thread_egress_mac,
                         &thread_egress_aes,
                     )
+                    .await
                     .unwrap();
 
                     continue;
@@ -531,14 +541,15 @@ fn run(
 
                 utils::send_message(
                     empty_block_bodies_message,
-                    &mut thread_stream,
+                    &thread_stream,
                     &thread_egress_mac,
                     &thread_egress_aes,
                 )
+                .await
                 .unwrap();
             }
 
-            if tx_tcp.send(uncrypted_body).is_err() {
+            if tx_tcp.send(uncrypted_body).await.is_err() {
                 break;
             }
         }
@@ -558,12 +569,7 @@ fn run(
 
         let get_blocks_headers =
             eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, reverse);
-        utils::send_message(
-            get_blocks_headers,
-            &mut stream,
-            &mut egress_mac,
-            &mut egress_aes,
-        )?;
+        utils::send_message(get_blocks_headers, &stream, &egress_mac, &egress_aes).await?;
 
         /******************
          *
@@ -575,7 +581,7 @@ fn run(
         let mut uncrypted_body: Vec<u8>;
         let mut code;
         loop {
-            uncrypted_body = rx_tcp.recv()?;
+            uncrypted_body = rx_tcp.recv().await.ok_or("channel closed")?;
 
             code = uncrypted_body[0] - 16;
             if code == 4 {
@@ -632,7 +638,7 @@ fn run(
                 < 600
             {
                 trace!("We have the latest created block. Waiting 15 seconds.");
-                sleep(Duration::from_secs(15));
+                tokio::time::sleep(Duration::from_secs(15)).await;
             } else {
                 // if the last block is older than 1hr we are assuming the node is not receiving new blocks
                 if current_hash.as_slice() == last_block.hash.as_slice() {
@@ -660,12 +666,7 @@ fn run(
         while transactions.len() < hashes.len() {
             let get_blocks_bodies =
                 eth::create_get_block_bodies_message(&hashes[transactions.len()..].to_vec());
-            utils::send_message(
-                get_blocks_bodies,
-                &mut stream,
-                &mut egress_mac,
-                &mut egress_aes,
-            )?;
+            utils::send_message(get_blocks_bodies, &stream, &egress_mac, &egress_aes).await?;
 
             /******************
              *
@@ -676,7 +677,7 @@ fn run(
             let mut uncrypted_body: Vec<u8>;
             let mut code;
             loop {
-                uncrypted_body = rx_tcp.recv()?;
+                uncrypted_body = rx_tcp.recv().await.ok_or("channel closed")?;
 
                 code = uncrypted_body[0] - 16;
                 if code == 6 {
@@ -709,7 +710,7 @@ fn run(
             while receipts.len() < hashes.len() {
                 let get_receipts =
                     eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec());
-                utils::send_message(get_receipts, &mut stream, &mut egress_mac, &mut egress_aes)?;
+                utils::send_message(get_receipts, &stream, &egress_mac, &egress_aes).await?;
 
                 /******************
                  *
@@ -720,7 +721,7 @@ fn run(
                 let mut uncrypted_body: Vec<u8>;
                 let mut code;
                 loop {
-                    uncrypted_body = rx_tcp.recv()?;
+                    uncrypted_body = rx_tcp.recv().await.ok_or("channel closed")?;
 
                     code = uncrypted_body[0] - 16;
                     if code == 16 {
@@ -774,7 +775,7 @@ fn run(
 
         // send blocks to the other thread to save in database
         if blocks.len() > 0 {
-            tx.send(blocks)?;
+            tx.send(blocks).await?;
         }
 
         if current_height == 0 {
