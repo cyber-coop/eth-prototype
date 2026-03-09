@@ -343,22 +343,18 @@ pub fn create_body(
 
 pub async fn send_message(
     msg: Vec<u8>,
-    stream: &Arc<tokio::sync::Mutex<tokio::net::TcpStream>>,
-    egress_mac: &Arc<Mutex<mac::MAC>>,
-    egress_aes: &Arc<Mutex<Aes256Ctr64BE>>,
-) -> Result<(), Box<dyn error::Error>> {
+    stream: &mut tokio::net::TcpStream,
+    egress_mac: &mut mac::MAC,
+    egress_aes: &mut Aes256Ctr64BE,
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     // Compute header and body while holding the std::sync guards (not Send),
     // then drop them before any .await point.
     let (header, body) = {
-        let mut egress_aes = egress_aes.lock().unwrap();
-        let mut egress_mac = egress_mac.lock().unwrap();
         let header = create_header(msg.len(), egress_mac.borrow_mut(), egress_aes.borrow_mut());
         let body = create_body(msg, egress_mac.borrow_mut(), egress_aes.borrow_mut());
         (header, body)
     };
 
-    let mut guard = stream.lock().await;
-    let stream = &mut *guard;
     stream.write_all(&header).await?;
     stream.write_all(&body).await?;
 
@@ -366,13 +362,10 @@ pub async fn send_message(
 }
 
 pub async fn read_message(
-    stream: &Arc<tokio::sync::Mutex<tokio::net::TcpStream>>,
+    stream: &mut tokio::net::TcpStream,
     ingress_mac: &mut mac::MAC,
     ingress_aes: &mut Aes256Ctr64BE,
-) -> Result<Vec<u8>, Box<dyn error::Error>> {
-    let mut guard = stream.lock().await;
-    let stream = &mut *guard;
-
+) -> Result<Vec<u8>, Box<dyn error::Error + Send + Sync>> {
     let mut buf = [0u8; 32];
     let _ = tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut buf)).await?;
 
@@ -414,22 +407,22 @@ pub fn open_exec_sql_file(network_arg: &String, postgres_client: &mut Client) {
 pub async fn send_eip8_auth_message(
     msg: &Vec<u8>,
     stream: &mut tokio::net::TcpStream,
-) -> Result<(), Box<dyn error::Error>> {
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     stream.write_all(msg).await?;
     Ok(())
 }
 
 pub async fn read_ack_message(
     stream: &mut tokio::net::TcpStream,
-) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error>> {
+) -> Result<(Vec<u8>, Vec<u8>), Box<dyn error::Error + Send + Sync>> {
     let mut buf = [0u8; 2];
-    stream.read_exact(&mut buf).await?;
+    tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut buf)).await??;
 
     let size_expected = BigEndian::read_u16(&buf) as usize;
     let shared_mac_data = buf[0..2].to_vec();
 
     let mut payload = vec![0u8; size_expected];
-    stream.read_exact(&mut payload).await?;
+    tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut payload)).await??;
 
     assert_eq!(payload.len(), size_expected);
 
