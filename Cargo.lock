@@ -823,6 +823,7 @@ dependencies = [
  "sha3 0.10.8",
  "snap",
  "tokio",
+ "tokio-postgres",
  "toml",
  "tx-from-scratch",
  "web3",

@@ -1,7 +1,3 @@
-use eth_prototype::configs::Peer;
-use eth_prototype::networks::Network;
-use rand::Rng;
-use secp256k1::rand::RngCore;
 use secp256k1::{rand, SecretKey};
 use std::collections::VecDeque;
 use std::env;
@@ -257,19 +253,25 @@ fn main() {
             // Sometimes peers are stuck and don't have new blocks. We need to disconnect from those.
             if !reverse {
                 // We need to go one block back
-                let mut postgres_client =
-                    postgres::Client::connect(&database_params, postgres::NoTls)
+                let (pg_client, pg_conn) =
+                    tokio_postgres::connect(&database_params, tokio_postgres::NoTls)
+                        .await
                         .expect("to connect to database");
-                let result = postgres_client
+                tokio::spawn(async move {
+                    if let Err(e) = pg_conn.await {
+                        warn!("postgres connection error: {}", e);
+                    }
+                });
+                let result = pg_client
                     .query(
-                        format!(
+                        &format!(
                             "SELECT * FROM {0}.blocks WHERE hash = '\\x{1}';",
                             network.to_string(),
                             hex::encode(&best_hash)
-                        )
-                        .as_str(),
+                        ),
                         &[],
                     )
+                    .await
                     .unwrap();
 
                 if result.len() > 0 {
@@ -283,100 +285,246 @@ fn main() {
             }
         }
 
-        // Fetch blocks - pipeline header requests across connections while
-        // bodies/receipts are fetched concurrently in spawned tasks.
-        // Tasks return Ok(conn) on success or Err(block_headers) so the batch
-        // can be retried on a different connection.
-        let done = Arc::new(AtomicBool::new(false));
         let mut pool: VecDeque<Connection> = connections.into_iter().collect();
-        let mut body_tasks: JoinSet<Result<Connection, Vec<Block>>> = JoinSet::new();
-        let mut retry_queue: VecDeque<Vec<Block>> = VecDeque::new();
 
-        'outer: loop {
-            if done.load(Ordering::Relaxed) {
-                break;
-            }
+        if reverse {
+            // Reverse sync (tip → genesis): pipeline header requests across
+            // connections while bodies/receipts are fetched concurrently.
+            // Tasks return Ok(conn) on success or Err(block_headers) so the
+            // batch can be retried on a different connection.
+            let done = Arc::new(AtomicBool::new(false));
+            let mut body_tasks: JoinSet<Result<Connection, Vec<Block>>> = JoinSet::new();
+            let mut retry_queue: VecDeque<Vec<Block>> = VecDeque::new();
 
-            // Get an available connection; if the pool is empty wait for a
-            // body task to finish and reclaim its connection (or a retry batch).
-            let mut conn = loop {
-                if let Some(c) = pool.pop_front() {
-                    break c;
-                }
-                match body_tasks.join_next().await {
-                    Some(Ok(Ok(c))) => pool.push_back(c),
-                    Some(Ok(Err(headers))) => {
-                        warn!("Task failed, re-queuing batch of {} headers", headers.len());
-                        retry_queue.push_back(headers);
-                    }
-                    Some(Err(e)) => warn!("Body task panicked: {:?}", e),
-                    None => {
-                        warn!("No connections left");
-                        break 'outer;
-                    }
-                }
-            };
-
-            // Use a pending retry batch or fetch new headers from the peer.
-            let block_headers = if let Some(headers) = retry_queue.pop_front() {
-                info!(
-                    "Retrying batch of {} headers on new connection",
-                    headers.len()
-                );
-                headers
-            } else {
-                // Send GetBlockHeaders
-                info!(
-                    "Sending GetBlockHeaders (starting {})",
-                    hex::encode(&current_hash)
-                );
-                let get_headers =
-                    eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, reverse);
-                if conn.tx_write.send(get_headers).await.is_err() {
-                    warn!("Connection lost, dropping");
-                    continue;
-                }
-
-                // Wait for BlockHeaders (code 4)
-                let headers_body = loop {
-                    match conn.rx_tcp.recv().await {
-                        Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
-                        Some(_) => continue,
-                        None => break None,
-                    }
-                };
-                let headers_body = match headers_body {
-                    Some(b) => b,
-                    None => continue,
-                };
-
-                let headers = eth::parse_block_headers(headers_body[1..].to_vec());
-                if headers.is_empty() {
-                    warn!("No block headers received");
-                    pool.push_back(conn);
+            'outer: loop {
+                if done.load(Ordering::Relaxed) {
                     break;
                 }
 
-                // Update current_hash before spawning so the next iteration
-                // immediately starts fetching the following batch.
-                if reverse {
-                    current_hash = headers.last().unwrap().parent_hash.to_vec();
+                // Get an available connection; if the pool is empty wait for a
+                // body task to finish and reclaim its connection (or a retry batch).
+                let mut conn = loop {
+                    if let Some(c) = pool.pop_front() {
+                        break c;
+                    }
+                    match body_tasks.join_next().await {
+                        Some(Ok(Ok(c))) => pool.push_back(c),
+                        Some(Ok(Err(headers))) => {
+                            warn!("Task failed, re-queuing batch of {} headers", headers.len());
+                            retry_queue.push_back(headers);
+                        }
+                        Some(Err(e)) => warn!("Body task panicked: {:?}", e),
+                        None => {
+                            warn!("No connections left");
+                            break 'outer;
+                        }
+                    }
+                };
+
+                let block_headers = if let Some(headers) = retry_queue.pop_front() {
+                    info!("Retrying batch of {} headers on new connection", headers.len());
+                    headers
                 } else {
+                    info!("Sending GetBlockHeaders (starting {})", hex::encode(&current_hash));
+                    let get_headers =
+                        eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, true);
+                    if conn.tx_write.send(get_headers).await.is_err() {
+                        warn!("Connection lost, dropping");
+                        continue;
+                    }
+
+                    let headers_body = loop {
+                        match conn.rx_tcp.recv().await {
+                            Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
+                            Some(_) => continue,
+                            None => break None,
+                        }
+                    };
+                    let headers_body = match headers_body {
+                        Some(b) => b,
+                        None => continue,
+                    };
+
+                    let headers = eth::parse_block_headers(headers_body[1..].to_vec());
+                    if headers.is_empty() {
+                        warn!("No block headers received");
+                        pool.push_back(conn);
+                        break;
+                    }
+
+                    current_hash = headers.last().unwrap().parent_hash.to_vec();
+                    headers
+                };
+
+                let tx_clone = tx.clone();
+                let done_clone = done.clone();
+                body_tasks.spawn(async move {
+                    let mut conn = conn;
+                    let hashes: Vec<Vec<u8>> =
+                        block_headers.iter().map(|b| b.hash.clone()).collect();
+                    let eth_version = conn.eth_protocol_version;
+
+                    let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                        vec![];
+                    while transactions.len() < hashes.len() {
+                        info!(
+                            "Sending GetBlockBodies ({}/{})",
+                            transactions.len(),
+                            hashes.len()
+                        );
+                        let get_bodies = eth::create_get_block_bodies_message(
+                            &hashes[transactions.len()..].to_vec(),
+                        );
+                        if conn.tx_write.send(get_bodies).await.is_err() {
+                            warn!("Connection lost during GetBlockBodies, will retry batch");
+                            return Err(block_headers);
+                        }
+                        loop {
+                            match conn.rx_tcp.recv().await {
+                                Some(body) if body[0].saturating_sub(16) == 6 => {
+                                    transactions
+                                        .extend(eth::parse_block_bodies(body[1..].to_vec()));
+                                    break;
+                                }
+                                Some(_) => continue,
+                                None => {
+                                    warn!(
+                                        "Connection closed during GetBlockBodies, will retry batch"
+                                    );
+                                    return Err(block_headers);
+                                }
+                            }
+                        }
+                    }
+
+                    let mut receipts: Vec<Vec<Receipt>> = vec![];
+                    if eth_version == 69 {
+                        while receipts.len() < hashes.len() {
+                            info!(
+                                "Sending GetReceipts ({}/{})",
+                                receipts.len(),
+                                hashes.len()
+                            );
+                            let get_receipts = eth::create_get_receipts_message(
+                                &hashes[receipts.len()..].to_vec(),
+                            );
+                            if conn.tx_write.send(get_receipts).await.is_err() {
+                                warn!("Connection lost during GetReceipts, will retry batch");
+                                return Err(block_headers);
+                            }
+                            loop {
+                                match conn.rx_tcp.recv().await {
+                                    Some(body) if body[0].saturating_sub(16) == 16 => {
+                                        receipts.extend(eth::parse_receipts(body[1..].to_vec()));
+                                        break;
+                                    }
+                                    Some(_) => continue,
+                                    None => {
+                                        warn!("Connection closed during GetReceipts, will retry batch");
+                                        return Err(block_headers);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let blocks: Vec<_> = block_headers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, header)| {
+                            let (txs, ommers, withdrawals) = transactions[i].clone();
+                            let block_receipts =
+                                if eth_version == 69 { receipts[i].clone() } else { vec![] };
+                            (header.clone(), txs, ommers, withdrawals, block_receipts)
+                        })
+                        .collect();
+
+                    let current_height = blocks.last().unwrap().0.number;
+                    info!("Blocks n° {}", current_height);
+
+                    if tx_clone.send(blocks).await.is_err() {
+                        warn!("DB channel closed");
+                        return Err(block_headers);
+                    }
+
+                    if current_height == 0 {
+                        info!("Data fully synced");
+                        done_clone.store(true, Ordering::Relaxed);
+                        return Ok(conn);
+                    }
+
+                    Ok(conn)
+                });
+            }
+
+            while body_tasks.join_next().await.is_some() {}
+        } else {
+            // Forward sync (tracking the tip): sequential, one batch at a time,
+            // rotating through peers. No parallelism needed since new blocks
+            // arrive slowly (~12s apart).
+            let mut retry_headers: Option<Vec<Block>> = None;
+
+            'outer: loop {
+                let mut conn = match pool.pop_front() {
+                    Some(c) => c,
+                    None => {
+                        warn!("No connections left");
+                        break;
+                    }
+                };
+
+                let block_headers = if let Some(headers) = retry_headers.take() {
+                    info!("Retrying batch of {} headers on new connection", headers.len());
+                    headers
+                } else {
+                    info!("Sending GetBlockHeaders (starting {})", hex::encode(&current_hash));
+                    let get_headers =
+                        eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, false);
+                    if conn.tx_write.send(get_headers).await.is_err() {
+                        warn!("Connection lost, dropping");
+                        continue;
+                    }
+
+                    let headers_body = loop {
+                        match conn.rx_tcp.recv().await {
+                            Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
+                            Some(_) => continue,
+                            None => break None,
+                        }
+                    };
+                    let headers_body = match headers_body {
+                        Some(b) => b,
+                        None => continue,
+                    };
+
+                    let headers = eth::parse_block_headers(headers_body[1..].to_vec());
+                    if headers.is_empty() {
+                        warn!("No new block headers, waiting...");
+                        pool.push_back(conn);
+                        tokio::time::sleep(Duration::from_secs(15)).await;
+                        continue;
+                    }
+
+                    // Skip the first header: it's current_hash, which is
+                    // already in the DB. The peer returns it inclusive.
+                    let headers: Vec<Block> = headers.into_iter().skip(1).collect();
+                    if headers.is_empty() {
+                        warn!("No new block headers, waiting...");
+                        pool.push_back(conn);
+                        tokio::time::sleep(Duration::from_secs(15)).await;
+                        continue;
+                    }
+
                     current_hash = headers.last().unwrap().hash.to_vec();
-                }
+                    headers
+                };
 
-                headers
-            };
-
-            let tx_clone = tx.clone();
-            let done_clone = done.clone();
-            body_tasks.spawn(async move {
-                let mut conn = conn;
-                let hashes: Vec<Vec<u8>> = block_headers.iter().map(|b| b.hash.clone()).collect();
+                let hashes: Vec<Vec<u8>> =
+                    block_headers.iter().map(|b| b.hash.clone()).collect();
                 let eth_version = conn.eth_protocol_version;
 
-                // Fetch block bodies
-                let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
+                let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+                    vec![];
                 while transactions.len() < hashes.len() {
                     info!(
                         "Sending GetBlockBodies ({}/{})",
@@ -388,7 +536,8 @@ fn main() {
                     );
                     if conn.tx_write.send(get_bodies).await.is_err() {
                         warn!("Connection lost during GetBlockBodies, will retry batch");
-                        return Err(block_headers);
+                        retry_headers = Some(block_headers);
+                        continue 'outer;
                     }
                     loop {
                         match conn.rx_tcp.recv().await {
@@ -399,22 +548,24 @@ fn main() {
                             Some(_) => continue,
                             None => {
                                 warn!("Connection closed during GetBlockBodies, will retry batch");
-                                return Err(block_headers);
+                                retry_headers = Some(block_headers);
+                                continue 'outer;
                             }
                         }
                     }
                 }
 
-                // Fetch receipts (eth69 only)
                 let mut receipts: Vec<Vec<Receipt>> = vec![];
                 if eth_version == 69 {
                     while receipts.len() < hashes.len() {
                         info!("Sending GetReceipts ({}/{})", receipts.len(), hashes.len());
-                        let get_receipts =
-                            eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec());
+                        let get_receipts = eth::create_get_receipts_message(
+                            &hashes[receipts.len()..].to_vec(),
+                        );
                         if conn.tx_write.send(get_receipts).await.is_err() {
                             warn!("Connection lost during GetReceipts, will retry batch");
-                            return Err(block_headers);
+                            retry_headers = Some(block_headers);
+                            continue 'outer;
                         }
                         loop {
                             match conn.rx_tcp.recv().await {
@@ -425,7 +576,8 @@ fn main() {
                                 Some(_) => continue,
                                 None => {
                                     warn!("Connection closed during GetReceipts, will retry batch");
-                                    return Err(block_headers);
+                                    retry_headers = Some(block_headers);
+                                    continue 'outer;
                                 }
                             }
                         }
@@ -437,11 +589,8 @@ fn main() {
                     .enumerate()
                     .map(|(i, header)| {
                         let (txs, ommers, withdrawals) = transactions[i].clone();
-                        let block_receipts = if eth_version == 69 {
-                            receipts[i].clone()
-                        } else {
-                            vec![]
-                        };
+                        let block_receipts =
+                            if eth_version == 69 { receipts[i].clone() } else { vec![] };
                         (header.clone(), txs, ommers, withdrawals, block_receipts)
                     })
                     .collect();
@@ -449,312 +598,16 @@ fn main() {
                 let current_height = blocks.last().unwrap().0.number;
                 info!("Blocks n° {}", current_height);
 
-                if tx_clone.send(blocks).await.is_err() {
+                if tx.send(blocks).await.is_err() {
                     warn!("DB channel closed");
-                    return Err(block_headers);
+                    break;
                 }
 
-                if current_height == 0 {
-                    info!("Data fully synced");
-                    done_clone.store(true, Ordering::Relaxed);
-                    return Ok(conn);
-                }
-
-                Ok(conn)
-            });
+                pool.push_back(conn);
+            }
         }
-
-        // Drain remaining body tasks before exiting
-        while body_tasks.join_next().await.is_some() {}
     });
 
     // need to wait for database thread to finish
     database_handle.join().unwrap();
-}
-
-async fn run(
-    peer: Peer,
-    network: Network,
-    database_params: &String,
-    current_hash: &mut Vec<u8>,
-    reverse: bool,
-    tx: &tokio::sync::mpsc::Sender<
-        Vec<(
-            Block,
-            Vec<Transaction>,
-            Vec<Block>,
-            Vec<Withdrawal>,
-            Vec<Receipt>,
-        )>,
-    >,
-) -> Result<(), Box<dyn error::Error + Send + Sync>> {
-    // Connect to the peer
-    let connection = Connection::connect(peer, network).await?;
-    let their_blockhash = connection.latest_blockhash();
-
-    // If we are already synced and we are saving new blocks, lets verify that we don't have the already highest block from this peer.
-    // Sometimes peers are stuck and don't have new blocks. We need to disconnect from those.
-    if !reverse {
-        // We need to go one block back
-        let mut postgres_client = postgres::Client::connect(&database_params, postgres::NoTls)
-            .expect("to connect to database");
-        let result = postgres_client
-            .query(
-                format!(
-                    "SELECT * FROM {0}.blocks WHERE hash = '\\x{1}';",
-                    network.to_string(),
-                    hex::encode(their_blockhash)
-                )
-                .as_str(),
-                &[],
-            )
-            .unwrap();
-
-        if result.len() > 0 {
-            warn!("We already have their latets block");
-            return Err("Peer not synced".into());
-        }
-    }
-
-    // If we don't have blocks in the database we use the best one
-    if current_hash.len() == 0 {
-        *current_hash = connection.latest_blockhash().clone();
-    }
-
-    /****************************
-     *
-     *  START FETCHING BLOCKS
-     *
-     ****************************/
-
-    // loop {
-    //     /******************
-    //      *
-    //      *  Send GetBlockHeaders message
-    //      *
-    //      ******************/
-    //     info!(
-    //         "Sending GetBlockHeaders message (starting {})",
-    //         hex::encode(&current_hash)
-    //     );
-
-    //     let get_blocks_headers =
-    //         eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, reverse);
-    //     utils::send_message(get_blocks_headers, &stream, &egress_mac, &egress_aes).await?;
-
-    //     /******************
-    //      *
-    //      *  Handle BlockHeader message
-    //      *
-    //      ******************/
-    //     info!("Handling BlockHeaders message");
-    //     let mut uncrypted_body: Vec<u8>;
-    //     let mut code;
-    //     loop {
-    //         uncrypted_body = rx_tcp.recv().await.ok_or("channel closed")?;
-
-    //         code = uncrypted_body[0] - 16;
-    //         if code == 4 {
-    //             break;
-    //         }
-    //     }
-
-    //     assert_eq!(code, 4);
-
-    //     let block_headers = eth::parse_block_headers(uncrypted_body[1..].to_vec());
-
-    //     // update block hash
-    //     if reverse {
-    //         *current_hash = block_headers.last().unwrap().parent_hash.to_vec();
-    //     } else {
-    //         if block_headers.len() == 0 {
-    //             warn!("No block founds");
-
-    //             // We need to go one block back
-    //             let mut postgres_client =
-    //                 postgres::Client::connect(&database_params, postgres::NoTls)
-    //                     .expect("to connect to database");
-    //             let result = postgres_client.query(format!("SELECT parent_hash, hash, number FROM {0}.blocks WHERE number = (SELECT MAX(number) FROM {0}.blocks);", network.to_string()).as_str(), &[]).unwrap();
-
-    //             let hash: Vec<u8> = result[0].try_get(1).unwrap();
-    //             match result[0].try_get(0) {
-    //                 Ok(h) => {
-    //                     *current_hash = h;
-    //                 }
-    //                 Err(_) => {
-    //                     error!("Fail to get hash of the minimum block");
-    //                 }
-    //             }
-
-    //             // Delete the block we cannot find anymore
-    //             info!(
-    //                 "Deleting block {} on network {}",
-    //                 hex::encode(&hash),
-    //                 network.to_string()
-    //             );
-    //             postgres_client.batch_execute(format!("DELETE FROM {0}.transactions WHERE block = '\\x{1}'; DELETE FROM {0}.blocks WHERE hash = '\\x{1}';", network.to_string(), hex::encode(&hash)).as_str()).unwrap();
-
-    //             continue;
-    //         }
-
-    //         let last_block = block_headers.last().unwrap();
-
-    //         // Verify if the block has ben created less than 600 seconds ago (1hr). Blocks are being created every 15 seconds.
-    //         if SystemTime::now()
-    //             .duration_since(SystemTime::UNIX_EPOCH)
-    //             .unwrap()
-    //             .as_secs() as u32
-    //             - last_block.time
-    //             < 600
-    //         {
-    //             trace!("We have the latest created block. Waiting 15 seconds.");
-    //             tokio::time::sleep(Duration::from_secs(15)).await;
-    //         } else {
-    //             // if the last block is older than 1hr we are assuming the node is not receiving new blocks
-    //             if current_hash.as_slice() == last_block.hash.as_slice() {
-    //                 warn!("Last block is our current block");
-    //                 return Err("No new blocks".into());
-    //             }
-    //         }
-
-    //         *current_hash = last_block.hash.to_vec();
-    //     }
-
-    //     /******************
-    //      *
-    //      *  Send GetBlockBodies message
-    //      *
-    //      ******************/
-    //     info!("Sending GetBlockBodies message");
-    //     let hashes = block_headers
-    //         .iter()
-    //         .map(|b| b.hash.clone())
-    //         .collect::<Vec<Vec<u8>>>();
-
-    //     let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
-
-    //     while transactions.len() < hashes.len() {
-    //         let get_blocks_bodies =
-    //             eth::create_get_block_bodies_message(&hashes[transactions.len()..].to_vec());
-    //         utils::send_message(get_blocks_bodies, &stream, &egress_mac, &egress_aes).await?;
-
-    //         /******************
-    //          *
-    //          *  Handle BlockHeader message
-    //          *
-    //          ******************/
-    //         let mut uncrypted_body: Vec<u8>;
-    //         let mut code;
-    //         loop {
-    //             uncrypted_body = rx_tcp.recv().await.ok_or("channel closed")?;
-
-    //             code = uncrypted_body[0] - 16;
-    //             if code == 6 {
-    //                 break;
-    //             }
-    //         }
-    //         assert_eq!(code, 6);
-
-    //         let tmp_txs = eth::parse_block_bodies(uncrypted_body[1..].to_vec());
-    //         transactions.extend(tmp_txs);
-
-    //         info!(
-    //             "Handling BlockBodies message ({}/{} block bodies received)",
-    //             transactions.len(),
-    //             hashes.len()
-    //         );
-    //     }
-
-    //     /******************
-    //      *
-    //      *  Send GetReceipts message
-    //      *
-    //      ******************/
-    //     // TODO: implement ETH 69 to be able to get receipts. Older protocols support it but are more of a struggle to implement.
-    //     info!("Sending GetReceipts message");
-    //     let mut receipts: Vec<Vec<Receipt>> = vec![];
-
-    //     if version == 69 {
-    //         while receipts.len() < hashes.len() {
-    //             let get_receipts =
-    //                 eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec());
-    //             utils::send_message(get_receipts, &stream, &egress_mac, &egress_aes).await?;
-
-    //             /******************
-    //              *
-    //              *  Handle Receipts message
-    //              *
-    //              ******************/
-    //             let mut uncrypted_body: Vec<u8>;
-    //             let mut code;
-    //             loop {
-    //                 uncrypted_body = rx_tcp.recv().await.ok_or("channel closed")?;
-
-    //                 code = uncrypted_body[0] - 16;
-    //                 if code == 16 {
-    //                     break;
-    //                 }
-    //             }
-    //             assert_eq!(code, 16);
-
-    //             let tmp_rpt: Vec<Vec<Receipt>> = eth::parse_receipts(uncrypted_body[1..].to_vec());
-    //             receipts.extend(tmp_rpt);
-
-    //             info!(
-    //                 "Handling Receipts message ({}/{} block receipts received)",
-    //                 receipts.len(),
-    //                 hashes.len()
-    //             );
-    //         }
-    //     }
-
-    // let mut blocks: Vec<(
-    //     Block,
-    //     Vec<Transaction>,
-    //     Vec<Block>,
-    //     Vec<Withdrawal>,
-    //     Vec<Receipt>,
-    // )> = vec![];
-    // let t_iter = transactions.iter();
-    // t_iter
-    //     .enumerate()
-    //     .for_each(|(i, (txs, ommers, withdrawals))| {
-    //         blocks.push((
-    //             block_headers[i].clone(),
-    //             txs.to_owned(),
-    //             ommers.to_owned(),
-    //             withdrawals.to_owned(),
-    //             if version == 69 {
-    //                 receipts[i].clone()
-    //             } else {
-    //                 vec![]
-    //             },
-    //         ));
-    //     });
-
-    //     let current_height = blocks.last().unwrap().0.number;
-    //     info!("Blocks n° {}", current_height);
-
-    //     // We already have the first block of the current batch when toward the tip of the chain
-    //     if !reverse {
-    //         blocks.remove(0);
-    //     }
-
-    //     // send blocks to the other thread to save in database
-    //     if blocks.len() > 0 {
-    //         tx.send(blocks).await?;
-    //     }
-
-    //     if current_height == 0 {
-    //         info!("Data fully synced");
-
-    //         drop(tcp_handle);
-
-    //         break;
-    //     }
-    // }
-
-    let _ = connection.handle.await;
-
-    Ok(())
 }
