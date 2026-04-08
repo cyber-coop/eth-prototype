@@ -70,7 +70,7 @@ fn main() {
     info!("Connected to database");
 
     // create the tables if they don't exist
-    database::create_tables(&network_arg, &mut postgres_client);
+    database::create_tables(&network.to_string(), &mut postgres_client);
 
     // get the hash of the next block in the chain going reverse
     // we should check if we are at the genesis block and that the parenthash is 0x0000......
@@ -200,26 +200,6 @@ fn main() {
         let mut tasks = JoinSet::new();
 
         for peer in config.peers {
-            // match run(
-            //     peer,
-            //     network,
-            //     &database_params,
-            //     &mut current_hash,
-            //     reverse,
-            //     &tx,
-            // )
-            // .await
-            // {
-            //     Ok(()) => {
-            //         // We are done
-            //         break;
-            //     }
-            //     Err(_) => {
-            //         // next peer
-            //         continue;
-            //     }
-            // };
-
             tasks.spawn(async move { Connection::connect(peer, network).await });
         }
 
@@ -464,6 +444,17 @@ fn main() {
             // arrive slowly (~12s apart).
             let mut retry_headers: Option<Vec<Block>> = None;
 
+            // Tokio-postgres client used only for re-org rollback queries.
+            let (reorg_pg_client, reorg_pg_conn) =
+                tokio_postgres::connect(&database_params, tokio_postgres::NoTls)
+                    .await
+                    .expect("to connect to database for re-org handling");
+            tokio::spawn(async move {
+                if let Err(e) = reorg_pg_conn.await {
+                    warn!("reorg postgres connection error: {}", e);
+                }
+            });
+
             'outer: loop {
                 let mut conn = match pool.pop_front() {
                     Some(c) => c,
@@ -498,25 +489,66 @@ fn main() {
                     };
 
                     let headers = eth::parse_block_headers(headers_body[1..].to_vec());
+
+                    // Empty response means the peer doesn't recognise current_hash
+                    // as canonical — assume re-org and roll back one block.
                     if headers.is_empty() {
+                        pool.push_back(conn);
+                        warn!(
+                            "Peer has no blocks after {} — assuming re-org, rolling back one block.",
+                            hex::encode(&current_hash)
+                        );
+                        let schema = network.to_string();
+                        let parent = reorg_pg_client
+                            .query_opt(
+                                &format!(
+                                    "SELECT parent_hash FROM {}.blocks WHERE hash = $1;",
+                                    schema
+                                ),
+                                &[&current_hash],
+                            )
+                            .await;
+                        match parent {
+                            Ok(Some(row)) => {
+                                let parent_hash: Vec<u8> = row.get(0);
+                                for stmt in [
+                                    format!("DELETE FROM {0}.receipts WHERE txid IN (SELECT txid FROM {0}.transactions WHERE block = $1)", schema),
+                                    format!("DELETE FROM {0}.contracts WHERE txid IN (SELECT txid FROM {0}.transactions WHERE block = $1)", schema),
+                                    format!("DELETE FROM {0}.transactions WHERE block = $1", schema),
+                                    format!("DELETE FROM {0}.withdrawals WHERE block_hash = $1", schema),
+                                    format!("DELETE FROM {0}.ommers WHERE canonical_hash = $1", schema),
+                                    format!("DELETE FROM {0}.blocks WHERE hash = $1", schema),
+                                ] {
+                                    reorg_pg_client.execute(&stmt, &[&current_hash]).await.unwrap();
+                                }
+                                warn!(
+                                    "Rolled back block {}. Resuming from parent {}.",
+                                    hex::encode(&current_hash),
+                                    hex::encode(&parent_hash)
+                                );
+                                current_hash = parent_hash;
+                            }
+                            Ok(None) => {
+                                warn!("Block {} not found in DB during re-org rollback.", hex::encode(&current_hash));
+                            }
+                            Err(e) => {
+                                warn!("Re-org rollback query failed: {}", e);
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Skip the first header: it's current_hash, already in the DB.
+                    let new_headers: Vec<Block> = headers.into_iter().skip(1).collect();
+                    if new_headers.is_empty() {
                         warn!("No new block headers, waiting...");
                         pool.push_back(conn);
                         tokio::time::sleep(Duration::from_secs(15)).await;
                         continue;
                     }
 
-                    // Skip the first header: it's current_hash, which is
-                    // already in the DB. The peer returns it inclusive.
-                    let headers: Vec<Block> = headers.into_iter().skip(1).collect();
-                    if headers.is_empty() {
-                        warn!("No new block headers, waiting...");
-                        pool.push_back(conn);
-                        tokio::time::sleep(Duration::from_secs(15)).await;
-                        continue;
-                    }
-
-                    current_hash = headers.last().unwrap().hash.to_vec();
-                    headers
+                    current_hash = new_headers.last().unwrap().hash.to_vec();
+                    new_headers
                 };
 
                 let hashes: Vec<Vec<u8>> =
