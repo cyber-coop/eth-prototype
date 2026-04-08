@@ -1,21 +1,15 @@
-use secp256k1::{rand, SecretKey};
 use std::collections::VecDeque;
 use std::env;
-use std::error;
-use std::net::SocketAddr;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use std::time::SystemTime;
 use tokio::task::JoinSet;
 
 use eth_prototype::connection::Connection;
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
-use eth_prototype::{configs, database, message, networks, types, utils};
+use eth_prototype::{configs, database, networks, utils};
 
 #[macro_use]
 extern crate log;

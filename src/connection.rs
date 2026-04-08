@@ -4,8 +4,6 @@ use secp256k1::SecretKey;
 use std::error;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Receiver;
@@ -13,12 +11,10 @@ use tokio::task::JoinHandle;
 
 use crate::configs::Peer;
 use crate::eth;
-use crate::mac;
 use crate::message;
 use crate::networks;
 use crate::types;
 use crate::utils;
-use crate::utils::Aes256Ctr64BE;
 
 pub struct Connection {
     pub handle: JoinHandle<()>,
