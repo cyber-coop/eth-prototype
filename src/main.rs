@@ -523,7 +523,20 @@ fn main() {
                                 current_hash = parent_hash;
                             }
                             Ok(None) => {
-                                warn!("Block {} not found in DB during re-org rollback.", hex::encode(&current_hash));
+                                warn!("Block {} not found in DB during re-org rollback, resetting to max known block.", hex::encode(&current_hash));
+                                match reorg_pg_client.query_opt(
+                                    &format!("SELECT hash FROM {}.blocks WHERE number = (SELECT MAX(number) FROM {}.blocks);", schema, schema),
+                                    &[],
+                                ).await {
+                                    Ok(Some(row)) => {
+                                        current_hash = row.get(0);
+                                        warn!("Resuming from max known block: {}", hex::encode(&current_hash));
+                                    }
+                                    _ => {
+                                        warn!("No known blocks in DB, stopping forward sync.");
+                                        break 'outer;
+                                    }
+                                }
                             }
                             Err(e) => {
                                 warn!("Re-org rollback query failed: {}", e);
