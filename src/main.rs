@@ -127,6 +127,11 @@ fn main() {
         )>,
     >(100);
 
+    // Shared between DB thread and forward sync: last block number + hash confirmed saved.
+    let last_confirmed: Arc<std::sync::Mutex<Option<(u32, Vec<u8>)>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let last_confirmed_db = last_confirmed.clone();
+
     let db_params = database_params.clone();
     let database_handle = thread::spawn(move || {
         info!("Starting database thread");
@@ -170,6 +175,8 @@ fn main() {
                 database::save_blocks(&batch, &network_arg, &mut postgres_client);
                 let last = batch.last().unwrap().0.number;
                 last_block_number = Some(last);
+                *last_confirmed_db.lock().unwrap() =
+                    Some((last, batch.last().unwrap().0.hash.clone()));
 
                 if network.genesis_hash.to_vec() == batch.last().unwrap().0.hash.to_vec() {
                     info!("We are synced ! We are creating the indexes on the tables... This will take a while.");
@@ -552,6 +559,34 @@ fn main() {
                         pool.push_back(conn);
                         tokio::time::sleep(Duration::from_secs(15)).await;
                         continue;
+                    }
+
+                    // Detect gap: if we're fetching blocks that are ahead of what the DB
+                    // has actually saved, a prior batch was lost (dropped connection, failed
+                    // retry, etc.). Reset current_hash to the last confirmed save so the
+                    // missing blocks are re-fetched.
+                    let reset_to = {
+                        let guard = last_confirmed.lock().unwrap();
+                        if let Some((confirmed_num, ref confirmed_hash)) = *guard {
+                            let new_first = new_headers.first().unwrap().number;
+                            if new_first > confirmed_num + 1 {
+                                Some((confirmed_num, confirmed_hash.clone()))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some((confirmed_num, confirmed_hash)) = reset_to {
+                        warn!(
+                            "Gap detected: next block is {} but DB last confirmed {}. Resetting current_hash.",
+                            new_headers.first().unwrap().number,
+                            confirmed_num
+                        );
+                        current_hash = confirmed_hash;
+                        pool.push_back(conn);
+                        continue 'outer;
                     }
 
                     current_hash = new_headers.last().unwrap().hash.to_vec();
