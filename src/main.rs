@@ -555,8 +555,12 @@ fn main() {
                     // Skip the first header: it's current_hash, already in the DB.
                     let new_headers: Vec<Block> = headers.into_iter().skip(1).collect();
                     if new_headers.is_empty() {
-                        warn!("No new block headers, waiting...");
                         pool.push_back(conn);
+                        if pool.len() == 1 {
+                            warn!("No new block headers and no other peers to try, stopping.");
+                            break 'outer;
+                        }
+                        warn!("No new block headers, waiting...");
                         tokio::time::sleep(Duration::from_secs(15)).await;
                         continue;
                     }
