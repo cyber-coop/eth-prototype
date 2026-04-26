@@ -214,9 +214,9 @@ pub fn create_empty_block_headers_message(req_id: &usize) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_block_headers(payload: Vec<u8>) -> Vec<Block> {
+pub fn parse_block_headers(payload: &[u8]) -> Vec<Block> {
     let mut dec = snap::raw::Decoder::new();
-    let message = dec.decompress_vec(&payload).unwrap();
+    let message = dec.decompress_vec(payload).unwrap();
 
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
@@ -284,11 +284,9 @@ pub fn create_get_receipts_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_block_bodies(
-    payload: Vec<u8>,
-) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
+pub fn parse_block_bodies(payload: &[u8]) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
     let mut dec = snap::raw::Decoder::new();
-    let message = dec.decompress_vec(&payload).unwrap();
+    let message = dec.decompress_vec(payload).unwrap();
 
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
@@ -344,9 +342,9 @@ pub fn parse_block_bodies(
     return result;
 }
 
-pub fn parse_receipts(payload: Vec<u8>) -> Vec<Vec<Receipt>> {
+pub fn parse_receipts(payload: &[u8]) -> Vec<Vec<Receipt>> {
     let mut dec = snap::raw::Decoder::new();
-    let message = dec.decompress_vec(&payload).unwrap();
+    let message = dec.decompress_vec(payload).unwrap();
 
     let r = rlp::Rlp::new(&message);
     assert!(r.is_list());
