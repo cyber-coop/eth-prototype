@@ -318,16 +318,18 @@ fn main() {
                         continue;
                     }
 
-                    let headers_body = loop {
-                        match conn.rx_tcp.recv().await {
-                            Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
-                            Some(_) => continue,
-                            None => break None,
+                    let headers_body = tokio::time::timeout(Duration::from_secs(30), async {
+                        loop {
+                            match conn.rx_tcp.recv().await {
+                                Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
+                                Some(_) => continue,
+                                None => break None,
+                            }
                         }
-                    };
+                    }).await.unwrap_or(None);
                     let headers_body = match headers_body {
                         Some(b) => b,
-                        None => continue,
+                        None => { warn!("Timed out or connection closed waiting for block headers, retrying"); continue; }
                     };
 
                     let headers = eth::parse_block_headers(&headers_body[1..]);
@@ -364,21 +366,21 @@ fn main() {
                             warn!("Connection lost during GetBlockBodies, will retry batch");
                             return Err(block_headers);
                         }
-                        loop {
-                            match conn.rx_tcp.recv().await {
-                                Some(body) if body[0].saturating_sub(16) == 6 => {
-                                    transactions
-                                        .extend(eth::parse_block_bodies(&body[1..]));
-                                    break;
-                                }
-                                Some(_) => continue,
-                                None => {
-                                    warn!(
-                                        "Connection closed during GetBlockBodies, will retry batch"
-                                    );
-                                    return Err(block_headers);
+                        let ok = tokio::time::timeout(Duration::from_secs(30), async {
+                            loop {
+                                match conn.rx_tcp.recv().await {
+                                    Some(body) if body[0].saturating_sub(16) == 6 => {
+                                        transactions.extend(eth::parse_block_bodies(&body[1..]));
+                                        break true;
+                                    }
+                                    Some(_) => continue,
+                                    None => break false,
                                 }
                             }
+                        }).await.unwrap_or(false);
+                        if !ok {
+                            warn!("Timed out or connection closed during GetBlockBodies, will retry batch");
+                            return Err(block_headers);
                         }
                     }
 
@@ -397,18 +399,21 @@ fn main() {
                                 warn!("Connection lost during GetReceipts, will retry batch");
                                 return Err(block_headers);
                             }
-                            loop {
-                                match conn.rx_tcp.recv().await {
-                                    Some(body) if body[0].saturating_sub(16) == 16 => {
-                                        receipts.extend(eth::parse_receipts(&body[1..]));
-                                        break;
-                                    }
-                                    Some(_) => continue,
-                                    None => {
-                                        warn!("Connection closed during GetReceipts, will retry batch");
-                                        return Err(block_headers);
+                            let ok = tokio::time::timeout(Duration::from_secs(30), async {
+                                loop {
+                                    match conn.rx_tcp.recv().await {
+                                        Some(body) if body[0].saturating_sub(16) == 16 => {
+                                            receipts.extend(eth::parse_receipts(&body[1..]));
+                                            break true;
+                                        }
+                                        Some(_) => continue,
+                                        None => break false,
                                     }
                                 }
+                            }).await.unwrap_or(false);
+                            if !ok {
+                                warn!("Timed out or connection closed during GetReceipts, will retry batch");
+                                return Err(block_headers);
                             }
                         }
                     }
@@ -481,16 +486,18 @@ fn main() {
                         continue;
                     }
 
-                    let headers_body = loop {
-                        match conn.rx_tcp.recv().await {
-                            Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
-                            Some(_) => continue,
-                            None => break None,
+                    let headers_body = tokio::time::timeout(Duration::from_secs(30), async {
+                        loop {
+                            match conn.rx_tcp.recv().await {
+                                Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
+                                Some(_) => continue,
+                                None => break None,
+                            }
                         }
-                    };
+                    }).await.unwrap_or(None);
                     let headers_body = match headers_body {
                         Some(b) => b,
-                        None => continue,
+                        None => { warn!("Timed out or connection closed waiting for block headers, retrying"); continue; }
                     };
 
                     let headers = eth::parse_block_headers(&headers_body[1..]);
@@ -621,19 +628,22 @@ fn main() {
                         retry_headers = Some(block_headers);
                         continue 'outer;
                     }
-                    loop {
-                        match conn.rx_tcp.recv().await {
-                            Some(body) if body[0].saturating_sub(16) == 6 => {
-                                transactions.extend(eth::parse_block_bodies(&body[1..]));
-                                break;
-                            }
-                            Some(_) => continue,
-                            None => {
-                                warn!("Connection closed during GetBlockBodies, will retry batch");
-                                retry_headers = Some(block_headers);
-                                continue 'outer;
+                    let ok = tokio::time::timeout(Duration::from_secs(30), async {
+                        loop {
+                            match conn.rx_tcp.recv().await {
+                                Some(body) if body[0].saturating_sub(16) == 6 => {
+                                    transactions.extend(eth::parse_block_bodies(&body[1..]));
+                                    break true;
+                                }
+                                Some(_) => continue,
+                                None => break false,
                             }
                         }
+                    }).await.unwrap_or(false);
+                    if !ok {
+                        warn!("Timed out or connection closed during GetBlockBodies, will retry batch");
+                        retry_headers = Some(block_headers);
+                        continue 'outer;
                     }
                 }
 
@@ -649,19 +659,22 @@ fn main() {
                             retry_headers = Some(block_headers);
                             continue 'outer;
                         }
-                        loop {
-                            match conn.rx_tcp.recv().await {
-                                Some(body) if body[0].saturating_sub(16) == 16 => {
-                                    receipts.extend(eth::parse_receipts(&body[1..]));
-                                    break;
-                                }
-                                Some(_) => continue,
-                                None => {
-                                    warn!("Connection closed during GetReceipts, will retry batch");
-                                    retry_headers = Some(block_headers);
-                                    continue 'outer;
+                        let ok = tokio::time::timeout(Duration::from_secs(30), async {
+                            loop {
+                                match conn.rx_tcp.recv().await {
+                                    Some(body) if body[0].saturating_sub(16) == 16 => {
+                                        receipts.extend(eth::parse_receipts(&body[1..]));
+                                        break true;
+                                    }
+                                    Some(_) => continue,
+                                    None => break false,
                                 }
                             }
+                        }).await.unwrap_or(false);
+                        if !ok {
+                            warn!("Timed out or connection closed during GetReceipts, will retry batch");
+                            retry_headers = Some(block_headers);
+                            continue 'outer;
                         }
                     }
                 }
