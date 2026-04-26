@@ -1,6 +1,6 @@
 use rand_core::RngCore;
-use secp256k1::rand;
 use secp256k1::SecretKey;
+use secp256k1::rand;
 use std::error;
 use std::net::SocketAddr;
 use std::str::FromStr;

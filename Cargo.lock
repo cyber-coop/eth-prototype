@@ -81,21 +81,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "android-tzdata"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e999941b234f3131b00bc13c22d06e8c5ff726d1b6318ac7eb276997bbb4fef0"
-
-[[package]]
-name = "android_system_properties"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "anstream"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -406,20 +391,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "chrono"
-version = "0.4.39"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e36cc9d416881d2e24f9a963be5fb1cd90966419ac844274161d10488b3e825"
-dependencies = [
- "android-tzdata",
- "iana-time-zone",
- "js-sys",
- "num-traits",
- "wasm-bindgen",
- "windows-targets 0.52.0",
-]
 
 [[package]]
 name = "cidr"
@@ -797,11 +768,10 @@ dependencies = [
 
 [[package]]
 name = "eth-prototype"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "aes 0.8.4",
  "byteorder",
- "chrono",
  "ctr 0.9.2",
  "devp2p",
  "ecb",
@@ -813,7 +783,6 @@ dependencies = [
  "log",
  "num",
  "postgres",
- "primitive-types 0.13.1",
  "rand_core 0.6.4",
  "rlp 0.6.1",
  "secp256k1 0.20.3",
@@ -843,7 +812,7 @@ dependencies = [
  "serde_json",
  "sha3 0.10.8",
  "thiserror",
- "uint 0.9.5",
+ "uint",
 ]
 
 [[package]]
@@ -854,7 +823,7 @@ checksum = "bfb684ac8fa8f6c5759f788862bb22ec6fe3cb392f6bfd08e3c64b603661e3f8"
 dependencies = [
  "crunchy",
  "fixed-hash 0.7.0",
- "impl-rlp 0.3.0",
+ "impl-rlp",
  "tiny-keccak",
 ]
 
@@ -866,7 +835,7 @@ checksum = "c22d4b5885b6aa2fe5e8b9329fb8d232bf739e434e6b87347c63bdd00c120f60"
 dependencies = [
  "crunchy",
  "fixed-hash 0.8.0",
- "impl-rlp 0.3.0",
+ "impl-rlp",
  "impl-serde",
  "tiny-keccak",
 ]
@@ -879,9 +848,9 @@ checksum = "f64b5df66a228d85e4b17e5d6c6aa43b0310898ffe8a85988c4c032357aaabfd"
 dependencies = [
  "ethbloom 0.11.1",
  "fixed-hash 0.7.0",
- "impl-rlp 0.3.0",
+ "impl-rlp",
  "primitive-types 0.9.1",
- "uint 0.9.5",
+ "uint",
 ]
 
 [[package]]
@@ -892,10 +861,10 @@ checksum = "02d215cbf040552efcbe99a38372fe80ab9d00268e20012b79fcd0f073edd8ee"
 dependencies = [
  "ethbloom 0.13.0",
  "fixed-hash 0.8.0",
- "impl-rlp 0.3.0",
+ "impl-rlp",
  "impl-serde",
  "primitive-types 0.12.2",
- "uint 0.9.5",
+ "uint",
 ]
 
 [[package]]
@@ -1343,29 +1312,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iana-time-zone"
-version = "0.1.60"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7ffbb5a1b541ea2561f8c41c087286cc091e21e556a4f09a8f6cbf17b69b141"
-dependencies = [
- "android_system_properties",
- "core-foundation-sys",
- "iana-time-zone-haiku",
- "js-sys",
- "wasm-bindgen",
- "windows-core",
-]
-
-[[package]]
-name = "iana-time-zone-haiku"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "idna"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1404,30 +1350,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "impl-codec"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b67aa010c1e3da95bf151bd8b4c059b2ed7e75387cdb969b4f8f2723a43f9941"
-dependencies = [
- "parity-scale-codec 3.6.9",
-]
-
-[[package]]
 name = "impl-rlp"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28220f89297a075ddc7245cd538076ee98b01f2a9c23a53a4f1105d5a322808"
 dependencies = [
  "rlp 0.5.2",
-]
-
-[[package]]
-name = "impl-rlp"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ed8ad1f3877f7e775b8cbf30ed1bd3209a95401817f19a0eb4402d13f8cf90"
-dependencies = [
- "rlp 0.6.1",
 ]
 
 [[package]]
@@ -2015,8 +1943,8 @@ checksum = "06345ee39fbccfb06ab45f3a1a5798d9dafa04cb8921a76d227040003a234b0e"
 dependencies = [
  "fixed-hash 0.7.0",
  "impl-codec 0.5.1",
- "impl-rlp 0.3.0",
- "uint 0.9.5",
+ "impl-rlp",
+ "uint",
 ]
 
 [[package]]
@@ -2027,21 +1955,9 @@ checksum = "0b34d9fd68ae0b74a41b21c03c2f62847aa0ffea044eee893b4c140b37e244e2"
 dependencies = [
  "fixed-hash 0.8.0",
  "impl-codec 0.6.0",
- "impl-rlp 0.3.0",
+ "impl-rlp",
  "impl-serde",
- "uint 0.9.5",
-]
-
-[[package]]
-name = "primitive-types"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d15600a7d856470b7d278b3fe0e311fe28c2526348549f8ef2ff7db3299c87f5"
-dependencies = [
- "fixed-hash 0.8.0",
- "impl-codec 0.7.0",
- "impl-rlp 0.4.0",
- "uint 0.10.0",
+ "uint",
 ]
 
 [[package]]
@@ -3183,18 +3099,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uint"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "909988d098b2f738727b161a106cfc7cab00c539c2687a8836f8e565976fb53e"
-dependencies = [
- "byteorder",
- "crunchy",
- "hex",
- "static_assertions",
-]
-
-[[package]]
 name = "unicode-bidi"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3432,15 +3336,6 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "windows-core"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
-dependencies = [
- "windows-targets 0.52.0",
-]
 
 [[package]]
 name = "windows-sys"

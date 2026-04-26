@@ -1,4 +1,4 @@
-use aes::cipher::{block_padding::NoPadding, BlockEncryptMut, KeyInit};
+use aes::cipher::{BlockEncryptMut, KeyInit, block_padding::NoPadding};
 use sha3::{Digest, Keccak256};
 
 pub struct MAC {

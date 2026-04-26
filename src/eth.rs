@@ -499,7 +499,7 @@ pub fn create_upgrade_status_message() -> Vec<u8> {
 mod tests {
     use crate::eth::parse_eth69_status_message;
 
-    use super::{create_upgrade_status_message, BASE_PROTOCOL_OFFSET};
+    use super::{BASE_PROTOCOL_OFFSET, create_upgrade_status_message};
 
     #[test]
     fn test_create_upgrade_status_message() {

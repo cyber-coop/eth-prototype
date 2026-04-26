@@ -1,7 +1,6 @@
 [package]
 name = "eth-prototype"
-version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
@@ -28,14 +27,12 @@ secp256k1 = { version = "0.28.1", features = ["recovery", "global-context", "ran
 snap = "1.1.0"
 postgres = { version = "0.19.9" }
 tokio-postgres = { version = "0.7" }
-primitive-types = { version = "0.13.1", features = ["impl-rlp"] }
 log = "0.4.22"
 env_logger = "0.11.6"
 toml = "0.8.19"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 num = "0.4.3"
-chrono = "0.4.39"
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
@@ -46,3 +43,11 @@ ethereum-types = "0.14.1"
 tx-from-scratch = { git = "https://github.com/Kuly14/tx-from-scratch" }
 web3 = "0.19.0"
 
+
+[profile.release]
+opt-level = 3        # maximum compiler optimizations
+lto = "thin"         # cross-crate link-time optimization (good balance of speed vs compile time)
+codegen-units = 1    # single codegen unit for better optimization at the cost of compile time
+debug = true         # keep debug symbols for readable stack traces
+strip = "none"       # do not strip anything from the binary
+panic = "unwind"     # keep stack unwinding on panic
