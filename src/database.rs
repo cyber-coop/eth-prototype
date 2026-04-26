@@ -118,120 +118,140 @@ pub fn save_blocks(
     let mut receipts_string: String = String::new();
 
     info!("starting to format blocks and transactions");
-    blocks.iter().for_each(|(b, txs, ommers, withdrawals, receipts)| {
-        let tmp = format!(
-            "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
-            hex::encode(&b.hash),
-            hex::encode(&b.parent_hash),
-            hex::encode(&b.ommers_hash),
-            hex::encode(&b.coinbase),
-            hex::encode(&b.state_root),
-            hex::encode(&b.txs_root),
-            hex::encode(&b.receipts_root),
-            hex::encode(&b.bloom),
-            b.difficulty,
-            b.number,
-            b.gas_limit,
-            b.gas_used,
-            b.time,
-            hex::encode(&b.extradata),
-            hex::encode(&b.mix_digest),
-            hex::encode(&b.block_nonce),
-            b.basefee_per_gas,
-            hex::encode(&b.withdrawals_root),
-        );
-
-        blocks_string.push_str(&tmp);
-        let mut index = 0;
-        txs.iter().for_each(|t| {
+    blocks
+        .iter()
+        .for_each(|(b, txs, ommers, withdrawals, receipts)| {
             let tmp = format!(
-                "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{}\n", // Important! We don't end with a ';'
-                index,
-                hex::encode(&t.txid),
-                t.tx_type,
+                "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
                 hex::encode(&b.hash),
-                serde_json::to_string(&t.chain_id).unwrap(),
-                t.nonce,
-                if let Some(gas_price) = &t.gas_price { gas_price.to_string() } else { "null".to_string() },
-                if let Some(max_priority_fee_per_gas) = t.max_priority_fee_per_gas { max_priority_fee_per_gas.to_string() } else { "null".to_string() },
-                if let Some(max_fee_per_gas) = t.max_fee_per_gas { max_fee_per_gas.to_string() } else { "null".to_string() },
-                t.gas_limit,
-                hex::encode(&t.from),
-                hex::encode(&t.to),
-                t.value.to_string(),
-                hex::encode(&t.data),
-                serde_json::to_string(&t.access_list).unwrap(),
-                if let Some(max_fee_per_blob_gas) = t.max_fee_per_blob_gas { max_fee_per_blob_gas.to_string() } else { "null".to_string() },
-                serde_json::to_value(&t.blob_versioned_hashes).unwrap(),
-                serde_json::to_value(&t.authorization_list).unwrap(),
-                t.v,
-                hex::encode(&t.r),
-                hex::encode(&t.s),
+                hex::encode(&b.parent_hash),
+                hex::encode(&b.ommers_hash),
+                hex::encode(&b.coinbase),
+                hex::encode(&b.state_root),
+                hex::encode(&b.txs_root),
+                hex::encode(&b.receipts_root),
+                hex::encode(&b.bloom),
+                b.difficulty,
+                b.number,
+                b.gas_limit,
+                b.gas_used,
+                b.time,
+                hex::encode(&b.extradata),
+                hex::encode(&b.mix_digest),
+                hex::encode(&b.block_nonce),
+                b.basefee_per_gas,
+                hex::encode(&b.withdrawals_root),
             );
-            index += 1;
 
-            // if "to" adddress is empty, calculates the transaction address
-            if t.to.is_empty() {
-                let tx_address: Vec <u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
+            blocks_string.push_str(&tmp);
+            let mut index = 0;
+            txs.iter().for_each(|t| {
                 let tmp = format!(
-                    "\\\\x{};\\\\x{}\n", // Important! We don't end with a ';'
-                hex::encode(&t.txid),
-                hex::encode(&tx_address));
-                contracts_string.push_str(&tmp);
-            }
+                    "{};\\\\x{};{};\\\\x{};{};{};{};{};{};{};\\\\x{};\\\\x{};{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{}\n", // Important! We don't end with a ';'
+                    index,
+                    hex::encode(&t.txid),
+                    t.tx_type,
+                    hex::encode(&b.hash),
+                    serde_json::to_string(&t.chain_id).unwrap(),
+                    t.nonce,
+                    if let Some(gas_price) = &t.gas_price {
+                        gas_price.to_string()
+                    } else {
+                        "null".to_string()
+                    },
+                    if let Some(max_priority_fee_per_gas) = t.max_priority_fee_per_gas {
+                        max_priority_fee_per_gas.to_string()
+                    } else {
+                        "null".to_string()
+                    },
+                    if let Some(max_fee_per_gas) = t.max_fee_per_gas {
+                        max_fee_per_gas.to_string()
+                    } else {
+                        "null".to_string()
+                    },
+                    t.gas_limit,
+                    hex::encode(&t.from),
+                    hex::encode(&t.to),
+                    t.value.to_string(),
+                    hex::encode(&t.data),
+                    serde_json::to_string(&t.access_list).unwrap(),
+                    if let Some(max_fee_per_blob_gas) = t.max_fee_per_blob_gas {
+                        max_fee_per_blob_gas.to_string()
+                    } else {
+                        "null".to_string()
+                    },
+                    serde_json::to_value(&t.blob_versioned_hashes).unwrap(),
+                    serde_json::to_value(&t.authorization_list).unwrap(),
+                    t.v,
+                    hex::encode(&t.r),
+                    hex::encode(&t.s),
+                );
+                index += 1;
 
-            // verifying if we are not going over the 1Gigabyte limit if yes we start a new copy in query
-            if transactions_string.as_bytes().len() + tmp.as_bytes().len() > 1000000000 {
-                transactions_strings.push(transactions_string.clone());
-                transactions_string = String::new();
-            }
-            transactions_string.push_str(&tmp);
+                // if "to" adddress is empty, calculates the transaction address
+                if t.to.is_empty() {
+                    let tx_address: Vec<u8> = utils::calculate_tx_addr(&t.from, &t.nonce);
+                    let tmp = format!(
+                        "\\\\x{};\\\\x{}\n", // Important! We don't end with a ';'
+                        hex::encode(&t.txid),
+                        hex::encode(&tx_address)
+                    );
+                    contracts_string.push_str(&tmp);
+                }
+
+                // verifying if we are not going over the 1Gigabyte limit if yes we start a new copy in query
+                if transactions_string.as_bytes().len() + tmp.as_bytes().len() > 1000000000 {
+                    transactions_strings.push(transactions_string.clone());
+                    transactions_string = String::new();
+                }
+                transactions_string.push_str(&tmp);
+            });
+            ommers.iter().for_each(|om| {
+                let tmp = format!(
+                    "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
+                    hex::encode(&om.hash),
+                    hex::encode(&b.hash),
+                    hex::encode(&om.coinbase),
+                    hex::encode(&om.state_root),
+                    hex::encode(&om.txs_root),
+                    hex::encode(&om.receipts_root),
+                    hex::encode(&om.bloom),
+                    om.difficulty,
+                    om.number,
+                    om.gas_limit,
+                    om.gas_used,
+                    om.time,
+                    hex::encode(&om.extradata),
+                    hex::encode(&om.mix_digest),
+                    hex::encode(&om.block_nonce),
+                    om.basefee_per_gas,
+                    hex::encode(&om.withdrawals_root),
+                );
+                ommers_string.push_str(&tmp);
+            });
+            withdrawals.iter().for_each(|wd| {
+                let tmp = format!(
+                    "\\\\x{};{};{};\\\\x{};{}\n", // Important! We don't end with a ';'
+                    hex::encode(&b.hash),
+                    wd.index,
+                    wd.validator_index,
+                    hex::encode(&wd.address),
+                    wd.amount,
+                );
+                withdrawals_string.push_str(&tmp);
+            });
+            receipts.iter().enumerate().for_each(|(i, r)| {
+                let tmp = format!(
+                    "\\\\x{};{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
+                    hex::encode(&txs[i].txid),
+                    r.tx_type,
+                    hex::encode(&r.post_state_or_status),
+                    r.cumulative_gas,
+                    serde_json::to_value(&r.logs).unwrap(),
+                );
+                receipts_string.push_str(&tmp);
+            });
         });
-        ommers.iter().for_each(|om| {
-            let tmp = format!(
-                "\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};\\\\x{};{};{};{};{};{};\\\\x{};\\\\x{};\\\\x{};{};\\\\x{}\n", // Important! We don't end with a ';'
-                hex::encode(&om.hash),
-                hex::encode(&b.hash),
-                hex::encode(&om.coinbase),
-                hex::encode(&om.state_root),
-                hex::encode(&om.txs_root),
-                hex::encode(&om.receipts_root),
-                hex::encode(&om.bloom),
-                om.difficulty,
-                om.number,
-                om.gas_limit,
-                om.gas_used,
-                om.time,
-                hex::encode(&om.extradata),
-                hex::encode(&om.mix_digest),
-                hex::encode(&om.block_nonce),
-                om.basefee_per_gas,
-                hex::encode(&om.withdrawals_root),
-            );
-            ommers_string.push_str(&tmp);
-        });
-        withdrawals.iter().for_each(|wd| {
-            let tmp = format!(
-                "\\\\x{};{};{};\\\\x{};{}\n", // Important! We don't end with a ';'
-                hex::encode(&b.hash),
-                wd.index,
-                wd.validator_index,
-                hex::encode(&wd.address),
-                wd.amount,
-            );
-            withdrawals_string.push_str(&tmp);
-        });
-        receipts.iter().enumerate().for_each(|(i, r)| {
-            let tmp = format!("\\\\x{};{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
-                hex::encode(&txs[i].txid),
-                r.tx_type,
-                hex::encode(&r.post_state_or_status),
-                r.cumulative_gas,
-                serde_json::to_value(&r.logs).unwrap(),
-            );
-            receipts_string.push_str(&tmp);
-        });
-    });
 
     transactions_strings.push(transactions_string.clone());
 

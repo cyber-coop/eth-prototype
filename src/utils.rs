@@ -1,7 +1,7 @@
 use aes::cipher::{KeyIvInit, StreamCipher};
 use byteorder::ByteOrder;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use hmac_sha256::{Hash, HMAC};
+use hmac_sha256::{HMAC, Hash};
 use postgres::Client;
 use rand_core::{OsRng, RngCore};
 use rlp::RlpStream;
@@ -447,7 +447,7 @@ pub fn handle_ack_message(
 #[cfg(test)]
 mod tests {
     use super::calculate_tx_addr;
-    use super::{ecdh_x, Aes256Ctr64BE};
+    use super::{Aes256Ctr64BE, ecdh_x};
     use crate::mac::MAC;
     use aes::cipher::KeyIvInit;
     use sha3::Digest;

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 use tokio::task::JoinSet;
@@ -179,7 +179,9 @@ fn main() {
                     Some((last, batch.last().unwrap().0.hash.clone()));
 
                 if network.genesis_hash.to_vec() == batch.last().unwrap().0.hash.to_vec() {
-                    info!("We are synced ! We are creating the indexes on the tables... This will take a while.");
+                    info!(
+                        "We are synced ! We are creating the indexes on the tables... This will take a while."
+                    );
                     utils::open_exec_sql_file(&network_arg, &mut postgres_client);
                     break 'recv;
                 }
