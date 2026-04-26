@@ -334,9 +334,8 @@ fn main() {
 
                     let headers = eth::parse_block_headers(&headers_body[1..]);
                     if headers.is_empty() {
-                        warn!("No block headers received");
-                        pool.push_back(conn);
-                        break;
+                        warn!("No block headers received, dropping peer and retrying");
+                        continue;
                     }
 
                     current_hash = headers.last().unwrap().parent_hash.to_vec();
