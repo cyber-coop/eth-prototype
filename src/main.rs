@@ -116,7 +116,7 @@ fn main() {
      *
      ********************/
 
-    // Create a queue with a maximum of 102400 blocks (100 * 1024 = 102400 blocks). We query blocks by batch of 1024 blocks.
+    // Create a queue with a maximum of 20480 blocks (20 * 1024 = 20480 blocks). We query blocks by batch of 1024 blocks.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<
         Vec<(
             Block,
@@ -125,7 +125,7 @@ fn main() {
             Vec<Withdrawal>,
             Vec<Receipt>,
         )>,
-    >(100);
+    >(20);
 
     // Shared between DB thread and forward sync: last block number + hash confirmed saved.
     let last_confirmed: Arc<std::sync::Mutex<Option<(u32, Vec<u8>)>>> =
@@ -284,11 +284,13 @@ fn main() {
                     break;
                 }
 
-                // Get an available connection; if the pool is empty wait for a
-                // body task to finish and reclaim its connection (or a retry batch).
+                // Get an available connection; if the pool is empty or the concurrency
+                // limit is reached, wait for a body task to finish first.
                 let mut conn = loop {
-                    if let Some(c) = pool.pop_front() {
-                        break c;
+                    if body_tasks.len() < 10 {
+                        if let Some(c) = pool.pop_front() {
+                            break c;
+                        }
                     }
                     match body_tasks.join_next().await {
                         Some(Ok(Ok(c))) => pool.push_back(c),
