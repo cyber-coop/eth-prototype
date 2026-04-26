@@ -120,6 +120,28 @@ impl Network {
         network_id: 0x2105,
     };
 
+    // Berachain Mainnet
+    pub const BERACHAIN_MAINNET: Network = Network {
+        genesis_hash: [
+            213, 120, 25, 66, 33, 40, 218, 28, 68, 51, 159, 199, 149, 102, 98, 55, 140, 23, 226,
+            33, 62, 102, 155, 66, 122, 201, 28, 209, 29, 252, 251, 56,
+        ],
+        head_td: 0,
+        fork_id: [0x701a097f, 0],
+        network_id: 0x138de,
+    };
+
+    // Berachain Bepolia
+    pub const BERACHAIN_BEPOLIA: Network = Network {
+        genesis_hash: [
+            2, 7, 102, 29, 227, 143, 14, 84, 186, 145, 200, 40, 96, 150, 231, 36, 134, 120, 76,
+            121, 220, 106, 150, 129, 252, 72, 107, 56, 51, 92, 4, 47,
+        ],
+        head_td: 0,
+        fork_id: [0x2edd8d57, 0],
+        network_id: 0x138c5,
+    };
+
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
         match network {
             "ethereum_ropsten" => Ok(Self::ETHEREUM_ROPSTEN),
@@ -132,6 +154,8 @@ impl Network {
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
             "polygon_mainnet" => Ok(Self::POLYGON_MAINNET),
             "base_mainnet" => Ok(Self::BASE_MAINNET),
+            "berachain_mainnet" => Ok(Self::BERACHAIN_MAINNET),
+            "berachain_bepolia" => Ok(Self::BERACHAIN_BEPOLIA),
             _ => Err("not matching available networks.".into()),
         }
     }
@@ -148,6 +172,8 @@ impl Network {
             &Self::BINANCE_MAINNET => "binance_mainnet",
             &Self::POLYGON_MAINNET => "polygon_mainnet",
             &Self::BASE_MAINNET => "base_mainnet",
+            &Self::BERACHAIN_MAINNET => "berachain_mainnet",
+            &Self::BERACHAIN_BEPOLIA => "berachain_bepolia",
             _ => panic!("Unknown network"),
         }
         .to_string()

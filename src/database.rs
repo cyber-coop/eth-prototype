@@ -77,13 +77,13 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     );
     CREATE TABLE IF NOT EXISTS {schema_name}.withdrawals (
         block_hash BYTEA NOT NULL,
-        index BIGINT NOT NULL,
-        validator_index BIGINT NOT NULL,
+        index NUMERIC(78) NOT NULL,
+        validator_index NUMERIC(78) NOT NULL,
         address BYTEA NOT NULL,
-        amount BIGINT NOT NULL
+        amount NUMERIC(78) NOT NULL
     );
     CREATE TABLE IF NOT EXISTS {schema_name}.receipts (
-        txid BYTEA NOT NULL,
+        txid BYTEA,
         tx_type SMALLINT NOT NULL,
         post_state_or_status BYTEA NOT NULL,
         cumulative_gas BIGINT NOT NULL,
@@ -240,17 +240,31 @@ pub fn save_blocks(
                 );
                 withdrawals_string.push_str(&tmp);
             });
-            receipts.iter().enumerate().for_each(|(i, r)| {
+            let (system_receipts, user_receipts): (Vec<_>, Vec<_>) =
+                receipts.iter().partition(|r| r.tx_type >= 128);
+
+            for r in system_receipts {
                 let tmp = format!(
-                    "\\\\x{};{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
-                    hex::encode(&txs[i].txid),
+                    "\\N;{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
                     r.tx_type,
                     hex::encode(&r.post_state_or_status),
                     r.cumulative_gas,
                     serde_json::to_value(&r.logs).unwrap(),
                 );
                 receipts_string.push_str(&tmp);
-            });
+            }
+
+            for (r, t) in user_receipts.iter().zip(txs.iter()) {
+                let tmp = format!(
+                    "\\\\x{};{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
+                    hex::encode(&t.txid),
+                    r.tx_type,
+                    hex::encode(&r.post_state_or_status),
+                    r.cumulative_gas,
+                    serde_json::to_value(&r.logs).unwrap(),
+                );
+                receipts_string.push_str(&tmp);
+            }
         });
 
     transactions_strings.push(transactions_string.clone());
