@@ -365,17 +365,13 @@ pub async fn read_message(
     ingress_aes: &mut Aes256Ctr64BE,
 ) -> Result<Vec<u8>, Box<dyn error::Error + Send + Sync>> {
     let mut buf = [0u8; 32];
-    let _ = tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut buf)).await?;
-
-    assert_eq!(buf.len(), 32);
+    tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut buf)).await??;
 
     let next_size = parse_header(&buf.to_vec(), ingress_mac, ingress_aes);
     let body_size = get_body_len(next_size);
 
     let mut body = vec![0u8; body_size];
-    let _ = tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut body)).await?;
-
-    assert_eq!(body.len(), body_size);
+    tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut body)).await??;
 
     Ok(parse_body(&body, ingress_mac, ingress_aes, next_size))
 }
