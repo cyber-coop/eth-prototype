@@ -116,7 +116,7 @@ impl Network {
             112, 214, 104, 24, 163, 165, 132, 91, 41, 108, 115, 221,
         ],
         head_td: 0,
-        fork_id: [0x86728b4e, 0],
+        fork_id: [0x1cfeafc9, 0],
         network_id: 0x2105,
     };
 
