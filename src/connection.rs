@@ -221,7 +221,7 @@ impl Connection {
 
         // Should do the loop here
 
-        let (tx_tcp, rx_tcp) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+        let (tx_tcp, rx_tcp) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
         let (tx_write, mut rx_write) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
 
         let handle = tokio::spawn(async move {
