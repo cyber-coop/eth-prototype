@@ -328,7 +328,7 @@ fn main() {
                         None => continue,
                     };
 
-                    let headers = eth::parse_block_headers(headers_body[1..].to_vec());
+                    let headers = eth::parse_block_headers(&headers_body[1..]);
                     if headers.is_empty() {
                         warn!("No block headers received");
                         pool.push_back(conn);
@@ -366,7 +366,7 @@ fn main() {
                             match conn.rx_tcp.recv().await {
                                 Some(body) if body[0].saturating_sub(16) == 6 => {
                                     transactions
-                                        .extend(eth::parse_block_bodies(body[1..].to_vec()));
+                                        .extend(eth::parse_block_bodies(&body[1..]));
                                     break;
                                 }
                                 Some(_) => continue,
@@ -398,7 +398,7 @@ fn main() {
                             loop {
                                 match conn.rx_tcp.recv().await {
                                     Some(body) if body[0].saturating_sub(16) == 16 => {
-                                        receipts.extend(eth::parse_receipts(body[1..].to_vec()));
+                                        receipts.extend(eth::parse_receipts(&body[1..]));
                                         break;
                                     }
                                     Some(_) => continue,
@@ -491,7 +491,7 @@ fn main() {
                         None => continue,
                     };
 
-                    let headers = eth::parse_block_headers(headers_body[1..].to_vec());
+                    let headers = eth::parse_block_headers(&headers_body[1..]);
 
                     // Empty response means the peer doesn't recognise current_hash
                     // as canonical — assume re-org and roll back one block.
@@ -622,7 +622,7 @@ fn main() {
                     loop {
                         match conn.rx_tcp.recv().await {
                             Some(body) if body[0].saturating_sub(16) == 6 => {
-                                transactions.extend(eth::parse_block_bodies(body[1..].to_vec()));
+                                transactions.extend(eth::parse_block_bodies(&body[1..]));
                                 break;
                             }
                             Some(_) => continue,
@@ -650,7 +650,7 @@ fn main() {
                         loop {
                             match conn.rx_tcp.recv().await {
                                 Some(body) if body[0].saturating_sub(16) == 16 => {
-                                    receipts.extend(eth::parse_receipts(body[1..].to_vec()));
+                                    receipts.extend(eth::parse_receipts(&body[1..]));
                                     break;
                                 }
                                 Some(_) => continue,
