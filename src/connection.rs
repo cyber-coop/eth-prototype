@@ -144,7 +144,11 @@ impl Connection {
                 latest: 0,
                 latest_hash: network.genesis_hash.to_vec(),
             };
-            payload = eth::create_eth69_status_message(status);
+            if network == networks::Network::POLYGON_MAINNET {
+                payload = eth::create_eth69_status_message_polygon(status);
+            } else {
+                payload = eth::create_eth69_status_message(status);
+            }
         } else {
             let status = eth::Status {
                 version,
@@ -175,8 +179,11 @@ impl Connection {
 
         let their_blockhash: Vec<u8>;
         if version == 69 {
-            let their_status =
-                eth::parse_eth69_status_message(uncrypted_body[1..].to_vec()).unwrap();
+            let their_status = if network == networks::Network::POLYGON_MAINNET {
+                eth::parse_eth69_status_message_polygon(uncrypted_body[1..].to_vec()).unwrap()
+            } else {
+                eth::parse_eth69_status_message(uncrypted_body[1..].to_vec()).unwrap()
+            };
 
             if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
                 warn!(

@@ -101,13 +101,55 @@ pub fn parse_eth69_status_message(payload: Vec<u8>) -> Option<Status69> {
     let genesis: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
     // get forkid info
     let forkidrlp = r.at(3).unwrap();
-    assert!(forkidrlp.is_list());
+
+    dbg!(hex::encode(forkidrlp.as_raw()));
+
     let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
     let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
 
     let earliest: u32 = r.at(4).unwrap().as_val().unwrap();
     let latest: u32 = r.at(5).unwrap().as_val().unwrap();
     let latest_hash: Vec<u8> = r.at(6).unwrap().as_val().unwrap();
+
+    let status = Status69 {
+        version,
+        network_id,
+        genesis,
+        fork_id: (fork_hash, fork_next),
+        earliest,
+        latest,
+        latest_hash,
+    };
+
+    return Some(status);
+}
+
+// polygon is not implementing the Status message correctly (see https://github.com/cyber-coop/eth-prototype/issues/118)
+pub fn parse_eth69_status_message_polygon(payload: Vec<u8>) -> Option<Status69> {
+    let mut dec = snap::raw::Decoder::new();
+    let message = dec.decompress_vec(&payload).unwrap();
+
+    dbg!(hex::encode(&message));
+
+    let r = rlp::Rlp::new(&message);
+    assert!(r.is_list());
+
+    if r.is_empty() {
+        return None;
+    }
+
+    let version: u32 = r.at(0).unwrap().as_val().unwrap();
+    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
+    let genesis: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
+    // get forkid info
+    let forkidrlp = r.at(4).unwrap();
+
+    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
+    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+
+    let earliest: u32 = r.at(5).unwrap().as_val().unwrap();
+    let latest: u32 = r.at(6).unwrap().as_val().unwrap();
+    let latest_hash: Vec<u8> = r.at(7).unwrap().as_val().unwrap();
 
     let status = Status69 {
         version,
@@ -129,6 +171,32 @@ pub fn create_eth69_status_message(status: Status69) -> Vec<u8> {
     s.append(&status.version);
     s.append(&status.network_id);
     s.append(&status.genesis);
+    s.begin_list(2);
+    s.append(&status.fork_id.0);
+    s.append(&status.fork_id.1);
+
+    s.append(&status.earliest);
+    s.append(&status.latest);
+    s.append(&status.latest_hash);
+
+    s.finalize_unbounded_list();
+
+    let payload = s.as_raw();
+    let code: Vec<u8> = vec![0x00 + BASE_PROTOCOL_OFFSET];
+
+    let mut enc = snap::raw::Encoder::new();
+    let payload_compressed = enc.compress_vec(&payload).unwrap();
+
+    return [code.to_vec(), payload_compressed].concat();
+}
+
+pub fn create_eth69_status_message_polygon(status: Status69) -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
+    s.begin_unbounded_list();
+    s.append(&status.version);
+    s.append(&status.network_id);
+    s.append(&status.genesis);
+    s.append(&0x599093b5u64); // polygon td at index 3
     s.begin_list(2);
     s.append(&status.fork_id.0);
     s.append(&status.fork_id.1);
