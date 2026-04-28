@@ -262,6 +262,13 @@ impl Connection {
                             continue;
                         }
 
+                        // drop mempool gossip — we never consume these
+                        match uncrypted_body[0] - 16 {
+                            1 => info!("NewBlockHashes received"),
+                            2 | 7 | 8 | 9 | 10 => continue,
+                            _ => {}
+                        }
+
                         if uncrypted_body[0] - 16 == 11 {
                             let mut dec = snap::raw::Decoder::new();
                             let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
@@ -277,8 +284,14 @@ impl Connection {
                             }
                         }
 
-                        if tx_tcp.send(uncrypted_body).await.is_err() {
-                            break;
+                        match tx_tcp.try_send(uncrypted_body) {
+                            Ok(_) => {}
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                warn!("rx_tcp channel full, dropping message");
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                break;
+                            }
                         }
                     }
                     Some(msg) = rx_write.recv() => {
