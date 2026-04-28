@@ -277,8 +277,14 @@ impl Connection {
                             }
                         }
 
-                        if tx_tcp.send(uncrypted_body).await.is_err() {
-                            break;
+                        match tx_tcp.try_send(uncrypted_body) {
+                            Ok(_) => {}
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                warn!("rx_tcp channel full, dropping message");
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                break;
+                            }
                         }
                     }
                     Some(msg) = rx_write.recv() => {
