@@ -148,6 +148,71 @@ pub fn create_eth69_status_message(status: Status69) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
+// Polygon's Bor StatusPacket69 puts TD before Genesis, unlike standard eth69
+// (see https://github.com/0xPolygon/bor/blob/develop/eth/protocols/eth/handshake.go)
+pub fn parse_eth69_status_message_polygon(payload: Vec<u8>) -> Option<Status69> {
+    let mut dec = snap::raw::Decoder::new();
+    let message = dec.decompress_vec(&payload).unwrap();
+
+    let r = rlp::Rlp::new(&message);
+    assert!(r.is_list());
+
+    if r.is_empty() {
+        return None;
+    }
+
+    let version: u32 = r.at(0).unwrap().as_val().unwrap();
+    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
+    // index 2 is td, which we don't track in Status69
+    let genesis: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
+    let forkidrlp = r.at(4).unwrap();
+    assert!(forkidrlp.is_list());
+    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
+    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+
+    let earliest: u32 = r.at(5).unwrap().as_val().unwrap();
+    let latest: u32 = r.at(6).unwrap().as_val().unwrap();
+    let latest_hash: Vec<u8> = r.at(7).unwrap().as_val().unwrap();
+
+    let status = Status69 {
+        version,
+        network_id,
+        genesis,
+        fork_id: (fork_hash, fork_next),
+        earliest,
+        latest,
+        latest_hash,
+    };
+
+    return Some(status);
+}
+
+pub fn create_eth69_status_message_polygon(status: Status69) -> Vec<u8> {
+    let mut s = rlp::RlpStream::new();
+    s.begin_unbounded_list();
+    s.append(&status.version);
+    s.append(&status.network_id);
+    s.append(&0u64); // td at index 2 — Bor doesn't validate this value
+    s.append(&status.genesis);
+    s.begin_list(2);
+    s.append(&status.fork_id.0);
+    s.append(&status.fork_id.1);
+
+    s.append(&status.earliest);
+    s.append(&status.latest);
+    s.append(&status.latest_hash);
+
+    s.finalize_unbounded_list();
+
+    let payload = s.as_raw();
+    let code: Vec<u8> = vec![0x00 + BASE_PROTOCOL_OFFSET];
+
+    let mut enc = snap::raw::Encoder::new();
+    let payload_compressed = enc.compress_vec(&payload).unwrap();
+
+    return [code.to_vec(), payload_compressed].concat();
+}
+
 pub fn create_get_block_headers_message(
     hash: &Vec<u8>,
     block_num: usize,
