@@ -240,10 +240,13 @@ pub fn save_blocks(
                 );
                 withdrawals_string.push_str(&tmp);
             });
-            receipts.iter().enumerate().for_each(|(i, r)| {
+            // System transactions (e.g. Base type 126, Polygon type 127) are dropped in
+            // parse_transaction but their receipts are always appended last, so zipping
+            // with txs naturally skips them since txs is the shorter iterator.
+            receipts.iter().zip(txs.iter()).for_each(|(r, t)| {
                 let tmp = format!(
                     "\\\\x{};{};\\\\x{};{};{}\n", // Important! We don't end with a ';'
-                    hex::encode(&txs[i].txid),
+                    hex::encode(&t.txid),
                     r.tx_type,
                     hex::encode(&r.post_state_or_status),
                     r.cumulative_gas,

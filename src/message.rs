@@ -514,6 +514,10 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
             trace!("System transaction from Base protocol. Ignoring it for now");
             None
         }
+        127 => {
+            trace!("System transaction from Polygon protocol. Ignoring it for now");
+            None
+        }
         _ => {
             dbg!(eip_tx[0]);
             dbg!(hex::encode(&payload));
