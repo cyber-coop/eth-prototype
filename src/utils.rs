@@ -313,6 +313,10 @@ pub fn create_header(
     BigEndian::write_uint(&mut buf, length as u64, 3);
     let mut header = [0_u8; 16];
     header[0..3].copy_from_slice(&buf[0..3]);
+    // RLPx header-data: RLP([[], []]) — required by spec; Nethermind rejects frames without it
+    header[3] = 0xC2;
+    header[4] = 0x80;
+    header[5] = 0x80;
 
     egress_aes.apply_keystream(&mut header);
     egress_mac.update_header(&mut header.to_vec());
