@@ -155,23 +155,33 @@ fn main() {
         'recv: loop {
             let blocks: Batch = rx.blocking_recv().unwrap();
 
+            // Always cache first — never blindly trust whichever batch happens to
+            // arrive first. With concurrent body tasks, completion order and dispatch
+            // order differ, so the first arrival isn't necessarily the legitimate
+            // starting point.
             let first_number = blocks.first().unwrap().0.number;
-            let is_contiguous = last_block_number
-                .map(|last| last.abs_diff(first_number) == 1)
-                .unwrap_or(true);
+            cache.insert(first_number, blocks);
 
-            if !is_contiguous {
-                info!(
-                    "Caching out-of-order batch starting at block {} (last saved: {:?})",
-                    first_number, last_block_number
-                );
-                cache.insert(first_number, blocks);
-                continue;
-            }
+            // Drain whatever is now reachable from the current position. On bootstrap
+            // (last_block_number is None) the anchor is the highest key we've seen so
+            // far in the cache, since reverse sync dispatches strictly downward from
+            // the tip and that key can only ever be reached by the legitimate first batch.
+            loop {
+                let batch = match last_block_number {
+                    // Reverse sync descends (key = last - 1); forward sync ascends
+                    // (key = last + 1) — try both since this thread serves either.
+                    Some(last) => last
+                        .checked_sub(1)
+                        .and_then(|k| cache.remove(&k))
+                        .or_else(|| cache.remove(&(last + 1))),
+                    None => cache
+                        .keys()
+                        .next_back()
+                        .copied()
+                        .and_then(|k| cache.remove(&k)),
+                };
+                let Some(batch) = batch else { break };
 
-            // Save this batch then drain any cached batches that are now contiguous.
-            let mut to_save: Option<Batch> = Some(blocks);
-            while let Some(batch) = to_save {
                 database::save_blocks(&batch, &network_arg, &mut postgres_client);
                 let last = batch.last().unwrap().0.number;
                 last_block_number = Some(last);
@@ -185,12 +195,6 @@ fn main() {
                     utils::open_exec_sql_file(&network_arg, &mut postgres_client);
                     break 'recv;
                 }
-
-                // Look for a cached batch whose first block is adjacent to `last`.
-                to_save = last
-                    .checked_sub(1)
-                    .and_then(|k| cache.remove(&k))
-                    .or_else(|| cache.remove(&(last + 1)));
             }
         }
 
