@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 use tokio::task::JoinSet;
 
-use eth_prototype::connection::Connection;
+use eth_prototype::connection::{BLOCK_BODIES_CODE, BLOCK_HEADERS_CODE, Connection, RECEIPTS_CODE};
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
 use eth_prototype::{configs, database, networks, utils};
@@ -322,26 +322,22 @@ fn main() {
                     headers
                 } else {
                     info!("Sending GetBlockHeaders (starting {})", hex::encode(&current_hash));
-                    let get_headers =
-                        eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, true);
-                    if conn.tx_write.send(get_headers).await.is_err() {
-                        warn!("Connection lost, dropping");
+                    let req_id = eth::next_request_id();
+                    let get_headers = eth::create_get_block_headers_message(
+                        &current_hash,
+                        BLOCK_NUM,
+                        0,
+                        true,
+                        req_id,
+                    );
+                    let Some(headers_body) =
+                        conn.request(get_headers, BLOCK_HEADERS_CODE, req_id).await
+                    else {
+                        warn!("No headers response, dropping connection");
                         continue;
-                    }
-
-                    let headers_body = loop {
-                        match conn.rx_tcp.recv().await {
-                            Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
-                            Some(_) => continue,
-                            None => break None,
-                        }
-                    };
-                    let headers_body = match headers_body {
-                        Some(b) => b,
-                        None => continue,
                     };
 
-                    let headers = eth::parse_block_headers(&headers_body[1..]);
+                    let headers = eth::parse_block_headers(&headers_body);
                     if headers.is_empty() {
                         // Stop requesting headers but let in-flight batches finish.
                         warn!("No block headers received");
@@ -374,29 +370,23 @@ fn main() {
                                 transactions.len(),
                                 hashes.len()
                             );
+                            let req_id = eth::next_request_id();
                             let get_bodies = eth::create_get_block_bodies_message(
                                 &hashes[transactions.len()..].to_vec(),
+                                req_id,
                             );
-                            if conn.tx_write.send(get_bodies).await.is_err() {
-                                warn!("Connection lost during GetBlockBodies, will retry batch");
+                            let Some(body) =
+                                conn.request(get_bodies, BLOCK_BODIES_CODE, req_id).await
+                            else {
+                                warn!("GetBlockBodies failed, will retry batch");
+                                return Err(block_headers);
+                            };
+                            let bodies = eth::parse_block_bodies(&body);
+                            if bodies.is_empty() {
+                                warn!("Peer returned no block bodies, will retry batch");
                                 return Err(block_headers);
                             }
-                            loop {
-                                match conn.rx_tcp.recv().await {
-                                    Some(body) if body[0].saturating_sub(16) == 6 => {
-                                        transactions
-                                            .extend(eth::parse_block_bodies(&body[1..]));
-                                        break;
-                                    }
-                                    Some(_) => continue,
-                                    None => {
-                                        warn!(
-                                            "Connection closed during GetBlockBodies, will retry batch"
-                                        );
-                                        return Err(block_headers);
-                                    }
-                                }
-                            }
+                            transactions.extend(bodies);
                         }
 
                         let mut receipts: Vec<Vec<Receipt>> = vec![];
@@ -407,26 +397,23 @@ fn main() {
                                     receipts.len(),
                                     hashes.len()
                                 );
+                                let req_id = eth::next_request_id();
                                 let get_receipts = eth::create_get_receipts_message(
                                     &hashes[receipts.len()..].to_vec(),
+                                    req_id,
                                 );
-                                if conn.tx_write.send(get_receipts).await.is_err() {
-                                    warn!("Connection lost during GetReceipts, will retry batch");
+                                let Some(body) =
+                                    conn.request(get_receipts, RECEIPTS_CODE, req_id).await
+                                else {
+                                    warn!("GetReceipts failed, will retry batch");
+                                    return Err(block_headers);
+                                };
+                                let batch_receipts = eth::parse_receipts(&body);
+                                if batch_receipts.is_empty() {
+                                    warn!("Peer returned no receipts, will retry batch");
                                     return Err(block_headers);
                                 }
-                                loop {
-                                    match conn.rx_tcp.recv().await {
-                                        Some(body) if body[0].saturating_sub(16) == 16 => {
-                                            receipts.extend(eth::parse_receipts(&body[1..]));
-                                            break;
-                                        }
-                                        Some(_) => continue,
-                                        None => {
-                                            warn!("Connection closed during GetReceipts, will retry batch");
-                                            return Err(block_headers);
-                                        }
-                                    }
-                                }
+                                receipts.extend(batch_receipts);
                             }
                         }
 
@@ -498,26 +485,22 @@ fn main() {
                     headers
                 } else {
                     info!("Sending GetBlockHeaders (starting {})", hex::encode(&current_hash));
-                    let get_headers =
-                        eth::create_get_block_headers_message(&current_hash, BLOCK_NUM, 0, false);
-                    if conn.tx_write.send(get_headers).await.is_err() {
-                        warn!("Connection lost, dropping");
+                    let req_id = eth::next_request_id();
+                    let get_headers = eth::create_get_block_headers_message(
+                        &current_hash,
+                        BLOCK_NUM,
+                        0,
+                        false,
+                        req_id,
+                    );
+                    let Some(headers_body) =
+                        conn.request(get_headers, BLOCK_HEADERS_CODE, req_id).await
+                    else {
+                        warn!("No headers response, dropping connection");
                         continue;
-                    }
-
-                    let headers_body = loop {
-                        match conn.rx_tcp.recv().await {
-                            Some(body) if body[0].saturating_sub(16) == 4 => break Some(body),
-                            Some(_) => continue,
-                            None => break None,
-                        }
-                    };
-                    let headers_body = match headers_body {
-                        Some(b) => b,
-                        None => continue,
                     };
 
-                    let headers = eth::parse_block_headers(&headers_body[1..]);
+                    let headers = eth::parse_block_headers(&headers_body);
 
                     // Empty response means the peer doesn't recognise current_hash
                     // as canonical — assume re-org and roll back one block.
@@ -637,56 +620,48 @@ fn main() {
                         transactions.len(),
                         hashes.len()
                     );
+                    let req_id = eth::next_request_id();
                     let get_bodies = eth::create_get_block_bodies_message(
                         &hashes[transactions.len()..].to_vec(),
+                        req_id,
                     );
-                    if conn.tx_write.send(get_bodies).await.is_err() {
-                        warn!("Connection lost during GetBlockBodies, will retry batch");
+                    let Some(body) = conn.request(get_bodies, BLOCK_BODIES_CODE, req_id).await
+                    else {
+                        warn!("GetBlockBodies failed, will retry batch");
+                        retry_headers = Some(block_headers);
+                        continue 'outer;
+                    };
+                    let bodies = eth::parse_block_bodies(&body);
+                    if bodies.is_empty() {
+                        warn!("Peer returned no block bodies, will retry batch");
                         retry_headers = Some(block_headers);
                         continue 'outer;
                     }
-                    loop {
-                        match conn.rx_tcp.recv().await {
-                            Some(body) if body[0].saturating_sub(16) == 6 => {
-                                transactions.extend(eth::parse_block_bodies(&body[1..]));
-                                break;
-                            }
-                            Some(_) => continue,
-                            None => {
-                                warn!("Connection closed during GetBlockBodies, will retry batch");
-                                retry_headers = Some(block_headers);
-                                continue 'outer;
-                            }
-                        }
-                    }
+                    transactions.extend(bodies);
                 }
 
                 let mut receipts: Vec<Vec<Receipt>> = vec![];
                 if eth_version == 69 {
                     while receipts.len() < hashes.len() {
                         info!("Sending GetReceipts ({}/{})", receipts.len(), hashes.len());
+                        let req_id = eth::next_request_id();
                         let get_receipts = eth::create_get_receipts_message(
                             &hashes[receipts.len()..].to_vec(),
+                            req_id,
                         );
-                        if conn.tx_write.send(get_receipts).await.is_err() {
-                            warn!("Connection lost during GetReceipts, will retry batch");
+                        let Some(body) = conn.request(get_receipts, RECEIPTS_CODE, req_id).await
+                        else {
+                            warn!("GetReceipts failed, will retry batch");
+                            retry_headers = Some(block_headers);
+                            continue 'outer;
+                        };
+                        let batch_receipts = eth::parse_receipts(&body);
+                        if batch_receipts.is_empty() {
+                            warn!("Peer returned no receipts, will retry batch");
                             retry_headers = Some(block_headers);
                             continue 'outer;
                         }
-                        loop {
-                            match conn.rx_tcp.recv().await {
-                                Some(body) if body[0].saturating_sub(16) == 16 => {
-                                    receipts.extend(eth::parse_receipts(&body[1..]));
-                                    break;
-                                }
-                                Some(_) => continue,
-                                None => {
-                                    warn!("Connection closed during GetReceipts, will retry batch");
-                                    retry_headers = Some(block_headers);
-                                    continue 'outer;
-                                }
-                            }
-                        }
+                        receipts.extend(batch_receipts);
                     }
                 }
 

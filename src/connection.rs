@@ -16,6 +16,15 @@ use crate::networks;
 use crate::types;
 use crate::utils;
 
+/// How long to wait for the response to a single eth request before giving up
+/// on the peer.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// eth response message codes (without the base protocol offset).
+pub const BLOCK_HEADERS_CODE: u8 = 0x04;
+pub const BLOCK_BODIES_CODE: u8 = 0x06;
+pub const RECEIPTS_CODE: u8 = 0x10;
+
 pub struct Connection {
     pub handle: JoinHandle<()>,
     pub rx_tcp: Receiver<Vec<u8>>,
@@ -28,6 +37,54 @@ impl Connection {
     // latest_blockhash getter
     pub fn latest_blockhash(&self) -> &Vec<u8> {
         &self.latest_blockhash
+    }
+
+    /// Sends `msg` and waits for the response carrying `req_id` with eth message
+    /// code `response_code` (without the base protocol offset). Unrelated messages,
+    /// including stale responses to earlier requests, are skipped.
+    ///
+    /// Returns the response payload (after the code byte), or `None` if the
+    /// connection closed or no matching response arrived within REQUEST_TIMEOUT.
+    /// Callers should drop the connection on `None`.
+    pub async fn request(
+        &mut self,
+        msg: Vec<u8>,
+        response_code: u8,
+        req_id: u64,
+    ) -> Option<Vec<u8>> {
+        if self.tx_write.send(msg).await.is_err() {
+            warn!("Connection lost, could not send request {}", req_id);
+            return None;
+        }
+
+        let deadline = tokio::time::Instant::now() + REQUEST_TIMEOUT;
+        loop {
+            match tokio::time::timeout_at(deadline, self.rx_tcp.recv()).await {
+                Err(_) => {
+                    warn!("Request {} timed out after {:?}", req_id, REQUEST_TIMEOUT);
+                    return None;
+                }
+                Ok(None) => {
+                    warn!("Connection closed while waiting for request {}", req_id);
+                    return None;
+                }
+                Ok(Some(mut body)) => {
+                    if body[0].saturating_sub(16) != response_code {
+                        continue;
+                    }
+                    match eth::parse_request_id(&body[1..]) {
+                        Some(id) if id == req_id => {
+                            body.remove(0);
+                            return Some(body);
+                        }
+                        other => debug!(
+                            "Ignoring response with request id {:?} (expected {})",
+                            other, req_id
+                        ),
+                    }
+                }
+            }
+        }
     }
 
     pub async fn connect(

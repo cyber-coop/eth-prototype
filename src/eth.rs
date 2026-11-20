@@ -1,4 +1,5 @@
 use sha3::{Digest, Keccak256};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::message::{parse_transaction, util_parse_withdrawal};
 use crate::types::{Block, Log, Receipt, Topic, Transaction, Withdrawal};
@@ -213,16 +214,31 @@ pub fn create_eth69_status_message_polygon(status: Status69) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
+static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Returns a new request ID, unique for the lifetime of the process, so that
+/// responses can be matched to the request that triggered them.
+pub fn next_request_id() -> u64 {
+    NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Reads the request ID (first RLP item) of a snappy-compressed eth response.
+pub fn parse_request_id(payload: &[u8]) -> Option<u64> {
+    let message = snap::raw::Decoder::new().decompress_vec(payload).ok()?;
+    rlp::Rlp::new(&message).at(0).ok()?.as_val().ok()
+}
+
 pub fn create_get_block_headers_message(
     hash: &Vec<u8>,
     block_num: usize,
     skip: usize,
     reverse: bool,
+    req_id: u64,
 ) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // req ID
-    s.append(&0x42_u8);
+    s.append(&req_id);
 
     s.begin_list(4);
     // block
@@ -303,11 +319,11 @@ pub fn parse_block_headers(payload: &[u8]) -> Vec<Block> {
     return headers;
 }
 
-pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
+pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>, req_id: u64) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // req ID
-    s.append(&0x42_u8);
+    s.append(&req_id);
 
     s.begin_list(hashes.len());
 
@@ -326,11 +342,11 @@ pub fn create_get_block_bodies_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn create_get_receipts_message(hashes: &Vec<Vec<u8>>) -> Vec<u8> {
+pub fn create_get_receipts_message(hashes: &Vec<Vec<u8>>, req_id: u64) -> Vec<u8> {
     let mut s = rlp::RlpStream::new();
     s.begin_unbounded_list();
     // req ID
-    s.append(&0x42_u8);
+    s.append(&req_id);
 
     s.begin_list(hashes.len());
 
@@ -586,5 +602,25 @@ mod tests {
         let status = parse_eth69_status_message(payload).unwrap();
 
         assert_eq!(status.version, 69);
+    }
+
+    #[test]
+    fn test_request_id_roundtrip() {
+        let hashes = vec![vec![0xab; 32], vec![0xcd; 32]];
+        let req_id = super::next_request_id();
+        assert_ne!(req_id, super::next_request_id());
+
+        for msg in [
+            super::create_get_block_headers_message(&hashes[0], 1024, 0, true, req_id),
+            super::create_get_block_bodies_message(&hashes, req_id),
+            super::create_get_receipts_message(&hashes, req_id),
+        ] {
+            assert_eq!(super::parse_request_id(&msg[1..]), Some(req_id));
+        }
+
+        let big_id = u64::MAX - 1;
+        let msg = super::create_get_block_bodies_message(&hashes, big_id);
+        assert_eq!(super::parse_request_id(&msg[1..]), Some(big_id));
+        assert_eq!(super::parse_request_id(&[0xff, 0x00]), None);
     }
 }
