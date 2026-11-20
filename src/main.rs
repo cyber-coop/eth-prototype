@@ -272,6 +272,26 @@ fn main() {
             }
         }
 
+        // Receipts are only fetched over eth69. Batches are spread across all peers
+        // in the pool, so mixing eth68 and eth69 peers would leave holes in the
+        // receipts table. If any eth69 peer is available, use only those.
+        let eth69_count = connections
+            .iter()
+            .filter(|c| c.eth_protocol_version == 69)
+            .count();
+        if eth69_count > 0 {
+            if eth69_count < connections.len() {
+                info!(
+                    "Using only the {} eth69 peers (dropping {} older peers) so every batch has receipts",
+                    eth69_count,
+                    connections.len() - eth69_count
+                );
+            }
+            connections.retain(|c| c.eth_protocol_version == 69);
+        } else if !connections.is_empty() {
+            warn!("No eth69 peers available: syncing without receipts");
+        }
+
         let mut pool: VecDeque<Connection> = connections.into_iter().collect();
 
         if reverse {
