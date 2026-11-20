@@ -117,6 +117,19 @@ async fn fetch_batch(conn: &mut Connection, headers: &[Block]) -> Option<Vec<Blo
     )
 }
 
+/// Parses a `BlockHeaders` response from a peer. The parser panics on malformed
+/// data; this runs in the sync loop itself, where a panic would stop the whole
+/// process, so it is caught and `None` returned. Callers drop the peer.
+fn parse_headers(payload: &[u8]) -> Option<Vec<Block>> {
+    match std::panic::catch_unwind(|| eth::parse_block_headers(payload)) {
+        Ok(headers) => Some(headers),
+        Err(_) => {
+            warn!("Malformed block headers from peer, dropping connection");
+            None
+        }
+    }
+}
+
 /// Connects to Postgres, retrying every 20 seconds until it succeeds.
 fn connect_with_retry(params: &str) -> postgres::Client {
     loop {
@@ -461,7 +474,9 @@ fn main() {
                 let Some(body) = conn.request(msg, BLOCK_HEADERS_CODE, req_id).await else {
                     continue;
                 };
-                let headers = eth::parse_block_headers(&body);
+                let Some(headers) = parse_headers(&body) else {
+                    continue;
+                };
                 if headers.is_empty() {
                     warn!("Peer returned no headers for the tip, trying next peer");
                     continue;
@@ -558,7 +573,9 @@ fn main() {
                         continue;
                     };
 
-                    let headers = eth::parse_block_headers(&headers_body);
+                    let Some(headers) = parse_headers(&headers_body) else {
+                        continue;
+                    };
                     if headers.is_empty() {
                         // Stop requesting headers but let in-flight batches finish.
                         warn!("No block headers received");
@@ -674,7 +691,9 @@ fn main() {
                         continue;
                     };
 
-                    let headers = eth::parse_block_headers(&headers_body);
+                    let Some(headers) = parse_headers(&headers_body) else {
+                        continue;
+                    };
 
                     // Empty response: the peer has no block after ours yet.
                     if headers.is_empty() {
@@ -817,5 +836,14 @@ fn main() {
     if !synced {
         error!("Sync stopped before completing, exiting with an error");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parse_headers_survives_malformed_input() {
+        assert!(super::parse_headers(&[0xff, 0x00, 0x12]).is_none());
+        assert!(super::parse_headers(&[]).is_none());
     }
 }
