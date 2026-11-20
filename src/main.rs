@@ -414,7 +414,15 @@ fn main() {
                                 warn!("Peer returned no block bodies, will retry batch");
                                 return Err(block_headers);
                             }
-                            transactions.extend(bodies);
+                            let roots: Vec<_> = bodies.iter().map(|(r, _)| r.clone()).collect();
+                            if let Err(e) = verify::verify_block_bodies(
+                                &block_headers[transactions.len()..],
+                                &roots,
+                            ) {
+                                warn!("Invalid block bodies from peer, will retry batch: {}", e);
+                                return Err(block_headers);
+                            }
+                            transactions.extend(bodies.into_iter().map(|(_, b)| b));
                         }
 
                         let mut receipts: Vec<Vec<Receipt>> = vec![];
@@ -673,7 +681,15 @@ fn main() {
                         retry_headers = Some(block_headers);
                         continue 'outer;
                     }
-                    transactions.extend(bodies);
+                    let roots: Vec<_> = bodies.iter().map(|(r, _)| r.clone()).collect();
+                    if let Err(e) =
+                        verify::verify_block_bodies(&block_headers[transactions.len()..], &roots)
+                    {
+                        warn!("Invalid block bodies from peer, will retry batch: {}", e);
+                        retry_headers = Some(block_headers);
+                        continue 'outer;
+                    }
+                    transactions.extend(bodies.into_iter().map(|(_, b)| b));
                 }
 
                 let mut receipts: Vec<Vec<Receipt>> = vec![];

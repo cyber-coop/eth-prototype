@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::message::{parse_transaction, util_parse_withdrawal};
 use crate::types::{Block, Log, Receipt, Topic, Transaction, Withdrawal};
+use crate::verify::BodyRoots;
 
 pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
@@ -365,7 +366,11 @@ pub fn create_get_receipts_message(hashes: &Vec<Vec<u8>>, req_id: u64) -> Vec<u8
     return [code.to_vec(), payload_compressed].concat();
 }
 
-pub fn parse_block_bodies(payload: &[u8]) -> Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> {
+/// Parses a `BlockBodies` response. Each body comes with the roots computed from
+/// its raw RLP, so the caller can check them against the block header.
+pub fn parse_block_bodies(
+    payload: &[u8],
+) -> Vec<(BodyRoots, (Vec<Transaction>, Vec<Block>, Vec<Withdrawal>))> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(payload).unwrap();
 
@@ -378,7 +383,7 @@ pub fn parse_block_bodies(payload: &[u8]) -> Vec<(Vec<Transaction>, Vec<Block>, 
     // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
     let block_bodies: rlp::Rlp<'_> = r.at(1).unwrap();
 
-    let mut result: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> = vec![];
+    let mut result = vec![];
 
     let count = block_bodies.item_count().unwrap();
     for i in 0..count {
@@ -389,6 +394,7 @@ pub fn parse_block_bodies(payload: &[u8]) -> Vec<(Vec<Transaction>, Vec<Block>, 
         let count_tx = transactions.item_count().unwrap();
         let ommers = block_body.at(1).unwrap();
         let count_om = ommers.item_count().unwrap();
+        let has_withdrawals = block_body.at(2).is_ok();
         let withdrawals = block_body.at(2).unwrap_or(rlp::Rlp::new(&empty_list_bytes)); // for backward compatibility (like when you are indexing pre-merge)
         let count_wd = withdrawals.item_count().unwrap();
 
@@ -398,8 +404,18 @@ pub fn parse_block_bodies(payload: &[u8]) -> Vec<(Vec<Transaction>, Vec<Block>, 
         let mut result_ommers: Vec<Block> = vec![];
         let mut result_withdrawals: Vec<Withdrawal> = vec![];
 
+        // Trie values for the transactions root: the RLP list for legacy
+        // transactions, `type || payload` (the string content) for typed ones.
+        // Computed over every transaction, including the system ones that
+        // parse_transaction drops.
+        let mut raw_transactions: Vec<&[u8]> = Vec::with_capacity(count_tx);
         for j in 0..count_tx {
             let transaction = transactions.at(j).unwrap();
+            raw_transactions.push(if transaction.is_list() {
+                transaction.as_raw()
+            } else {
+                transaction.data().unwrap()
+            });
             if let Some(t) = parse_transaction(transaction.as_raw().to_vec()) {
                 result_transactions.push(t);
             };
@@ -411,13 +427,24 @@ pub fn parse_block_bodies(payload: &[u8]) -> Vec<(Vec<Transaction>, Vec<Block>, 
             result_ommers.push(om);
         }
 
+        let mut raw_withdrawals: Vec<&[u8]> = Vec::with_capacity(count_wd);
         for l in 0..count_wd {
             let withdrawal = withdrawals.at(l).unwrap();
+            raw_withdrawals.push(withdrawal.as_raw());
             let wd = util_parse_withdrawal(withdrawal.as_raw().to_vec());
             result_withdrawals.push(wd);
         }
 
-        result.push((result_transactions, result_ommers, result_withdrawals));
+        let roots = BodyRoots::compute(
+            &raw_transactions,
+            ommers.as_raw(),
+            has_withdrawals.then_some(&raw_withdrawals[..]),
+        );
+
+        result.push((
+            roots,
+            (result_transactions, result_ommers, result_withdrawals),
+        ));
     }
 
     return result;
