@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::message::{parse_transaction, util_parse_withdrawal};
 use crate::types::{Block, Log, Receipt, Topic, Transaction, Withdrawal};
-use crate::verify::BodyRoots;
+use crate::verify::{BodyRoots, eth69_receipt_trie_value, ordered_trie_root};
 
 pub const BASE_PROTOCOL_OFFSET: u8 = 16;
 
@@ -450,7 +450,10 @@ pub fn parse_block_bodies(
     return result;
 }
 
-pub fn parse_receipts(payload: &[u8]) -> Vec<Vec<Receipt>> {
+/// Parses an eth69 `Receipts` response. Each block's receipts come with the
+/// receipts root computed from their raw RLP, so the caller can check it
+/// against the block header.
+pub fn parse_receipts(payload: &[u8]) -> Vec<([u8; 32], Vec<Receipt>)> {
     let mut dec = snap::raw::Decoder::new();
     let message = dec.decompress_vec(payload).unwrap();
 
@@ -460,7 +463,7 @@ pub fn parse_receipts(payload: &[u8]) -> Vec<Vec<Receipt>> {
     // let req_id: usize = r.at(0).unwrap().as_val().unwrap();
     let receipts: rlp::Rlp<'_> = r.at(1).unwrap();
 
-    let mut result: Vec<Vec<Receipt>> = vec![];
+    let mut result: Vec<([u8; 32], Vec<Receipt>)> = vec![];
 
     let count = receipts.item_count().unwrap();
     for i in 0..count {
@@ -470,9 +473,11 @@ pub fn parse_receipts(payload: &[u8]) -> Vec<Vec<Receipt>> {
         let mut result_block_receipts: Vec<Receipt> = vec![];
 
         let count_r = block_receipts.item_count().unwrap();
+        let mut trie_values: Vec<Vec<u8>> = Vec::with_capacity(count_r);
         for j in 0..count_r {
             let receipt = block_receipts.at(j).unwrap();
             assert!(receipt.is_list());
+            trie_values.push(eth69_receipt_trie_value(&receipt).unwrap());
 
             let tx_type: u8 = receipt.at(0).unwrap().as_val().unwrap();
             let post_state_or_status: Vec<u8> = receipt.at(1).unwrap().as_val().unwrap();
@@ -498,7 +503,7 @@ pub fn parse_receipts(payload: &[u8]) -> Vec<Vec<Receipt>> {
             result_block_receipts.push(r);
         }
 
-        result.push(result_block_receipts);
+        result.push((ordered_trie_root(&trie_values), result_block_receipts));
     }
 
     return result;

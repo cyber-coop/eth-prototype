@@ -161,6 +161,87 @@ fn encode_node(items: &[&(Vec<u8>, &[u8])], depth: usize) -> Vec<u8> {
     stream.out().to_vec()
 }
 
+/// Adds `data` to a 2048-bit logs bloom filter (Yellow Paper, section 4.3.1):
+/// three bits, each taken from a pair of bytes of keccak256(data).
+fn bloom_add(bloom: &mut [u8; 256], data: &[u8]) {
+    let hash = keccak(data);
+    for i in 0..3 {
+        let bit = (((hash[2 * i] as usize) << 8) | hash[2 * i + 1] as usize) & 2047;
+        bloom[255 - bit / 8] |= 1 << (bit % 8);
+    }
+}
+
+/// Logs bloom of a receipt, from the RLP list of its logs
+/// (each log is `[address, [topics...], data]`).
+pub fn logs_bloom(logs: &rlp::Rlp) -> Result<[u8; 256], rlp::DecoderError> {
+    let mut bloom = [0u8; 256];
+    for log in logs.iter() {
+        bloom_add(&mut bloom, log.at(0)?.data()?);
+        for topic in log.at(1)?.iter() {
+            bloom_add(&mut bloom, topic.data()?);
+        }
+    }
+    Ok(bloom)
+}
+
+/// Value stored in the receipts trie for an eth69 receipt.
+///
+/// eth69 sends receipts as `[tx_type, status, cumulative_gas, logs, ...]`
+/// without the bloom. The consensus encoding is
+/// `rlp([status, cumulative_gas, bloom, logs, ...])`, prefixed by the type byte
+/// for typed transactions. Fields after `logs` (e.g. OP-stack deposit receipts'
+/// `depositNonce` and `depositReceiptVersion`) are kept as they are.
+pub fn eth69_receipt_trie_value(receipt: &rlp::Rlp) -> Result<Vec<u8>, rlp::DecoderError> {
+    let count = receipt.item_count()?;
+    if count < 4 {
+        return Err(rlp::DecoderError::RlpIncorrectListLen);
+    }
+    let tx_type: u8 = receipt.val_at(0)?;
+    let logs = receipt.at(3)?;
+
+    let mut stream = rlp::RlpStream::new_list(count);
+    stream.append_raw(receipt.at(1)?.as_raw(), 1);
+    stream.append_raw(receipt.at(2)?.as_raw(), 1);
+    stream.append(&logs_bloom(&logs)?.as_slice());
+    stream.append_raw(logs.as_raw(), 1);
+    for i in 4..count {
+        stream.append_raw(receipt.at(i)?.as_raw(), 1);
+    }
+
+    let encoded = stream.out();
+    Ok(if tx_type == 0 {
+        encoded.to_vec()
+    } else {
+        [&[tx_type][..], &encoded].concat()
+    })
+}
+
+/// Checks a `Receipts` response against the headers it was requested for.
+/// `roots` are the receipts roots computed for each block, in request order.
+pub fn verify_receipts(headers: &[Block], roots: &[[u8; 32]]) -> Result<(), String> {
+    if roots.len() > headers.len() {
+        return Err(format!(
+            "received receipts for {} blocks but asked for {}",
+            roots.len(),
+            headers.len()
+        ));
+    }
+
+    for (header, root) in headers.iter().zip(roots) {
+        if header.receipts_root != root {
+            return Err(format!(
+                "block n° {} ({}): receipts root {} does not match header {}",
+                header.number,
+                hex::encode(&header.hash),
+                hex::encode(root),
+                hex::encode(&header.receipts_root)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Checks a `BlockBodies` response against the headers it was requested for.
 /// Bodies come back in request order, and a peer may return fewer than asked.
 pub fn verify_block_bodies(headers: &[Block], roots: &[BodyRoots]) -> Result<(), String> {
@@ -467,5 +548,126 @@ mod tests {
 
         let with_wd = BodyRoots::compute(&txs, &[0xc0], Some(&[vec![0xc1, 0x03]][..]));
         assert!(verify_block_bodies(&[header], &[with_wd]).is_err());
+    }
+
+    // eth69 receipt: [tx_type, status, cumulative_gas, logs, extra...]
+    fn eth69_receipt(
+        tx_type: u8,
+        logs: &[(Vec<u8>, Vec<Vec<u8>>, Vec<u8>)],
+        extra: &[u64],
+    ) -> Vec<u8> {
+        let mut s = rlp::RlpStream::new_list(4 + extra.len());
+        s.append(&tx_type);
+        s.append(&1u8);
+        s.append(&21000u64);
+        s.begin_list(logs.len());
+        for (address, topics, data) in logs {
+            s.begin_list(3);
+            s.append(address);
+            s.append_list::<Vec<u8>, Vec<u8>>(topics);
+            s.append(data);
+        }
+        for e in extra {
+            s.append(e);
+        }
+        s.out().to_vec()
+    }
+
+    fn one_log() -> Vec<(Vec<u8>, Vec<Vec<u8>>, Vec<u8>)> {
+        vec![(
+            vec![0x11; 20],
+            vec![vec![0x22; 32], vec![0x33; 32]],
+            vec![0xde, 0xad],
+        )]
+    }
+
+    #[test]
+    fn bloom_sets_at_most_three_bits_per_item() {
+        let mut bloom = [0u8; 256];
+        bloom_add(&mut bloom, b"hello");
+        let bits: u32 = bloom.iter().map(|b| b.count_ones()).sum();
+        assert!((1..=3).contains(&bits));
+
+        let before = bloom;
+        bloom_add(&mut bloom, b"hello");
+        assert_eq!(before, bloom);
+    }
+
+    #[test]
+    fn logs_bloom_covers_address_and_topics() {
+        let raw = eth69_receipt(2, &one_log(), &[]);
+        let receipt = rlp::Rlp::new(&raw);
+        let bloom = logs_bloom(&receipt.at(3).unwrap()).unwrap();
+
+        let mut expected = [0u8; 256];
+        bloom_add(&mut expected, &[0x11; 20]);
+        bloom_add(&mut expected, &[0x22; 32]);
+        bloom_add(&mut expected, &[0x33; 32]);
+        assert_eq!(bloom, expected);
+
+        let empty = eth69_receipt(0, &[], &[]);
+        assert_eq!(
+            logs_bloom(&rlp::Rlp::new(&empty).at(3).unwrap()).unwrap(),
+            [0u8; 256]
+        );
+    }
+
+    fn consensus_receipt(logs: &[(Vec<u8>, Vec<Vec<u8>>, Vec<u8>)], extra: &[u64]) -> Vec<u8> {
+        let raw = eth69_receipt(0, logs, &[]);
+        let bloom = logs_bloom(&rlp::Rlp::new(&raw).at(3).unwrap()).unwrap();
+        let mut s = rlp::RlpStream::new_list(4 + extra.len());
+        s.append(&1u8);
+        s.append(&21000u64);
+        s.append(&bloom.as_slice());
+        s.append_raw(rlp::Rlp::new(&raw).at(3).unwrap().as_raw(), 1);
+        for e in extra {
+            s.append(e);
+        }
+        s.out().to_vec()
+    }
+
+    #[test]
+    fn receipt_trie_value_legacy() {
+        let raw = eth69_receipt(0, &one_log(), &[]);
+        let value = eth69_receipt_trie_value(&rlp::Rlp::new(&raw)).unwrap();
+        assert_eq!(value, consensus_receipt(&one_log(), &[]));
+    }
+
+    #[test]
+    fn receipt_trie_value_typed() {
+        let raw = eth69_receipt(2, &one_log(), &[]);
+        let value = eth69_receipt_trie_value(&rlp::Rlp::new(&raw)).unwrap();
+        assert_eq!(value[0], 0x02);
+        assert_eq!(&value[1..], consensus_receipt(&one_log(), &[]));
+    }
+
+    #[test]
+    fn receipt_trie_value_keeps_extra_fields() {
+        // OP-stack deposit receipt: depositNonce and depositReceiptVersion after logs.
+        let raw = eth69_receipt(0x7e, &[], &[42, 1]);
+        let value = eth69_receipt_trie_value(&rlp::Rlp::new(&raw)).unwrap();
+        assert_eq!(value[0], 0x7e);
+        assert_eq!(&value[1..], consensus_receipt(&[], &[42, 1]));
+    }
+
+    #[test]
+    fn receipt_trie_value_rejects_short_list() {
+        let mut s = rlp::RlpStream::new_list(3);
+        s.append(&0u8).append(&1u8).append(&21000u64);
+        assert!(eth69_receipt_trie_value(&rlp::Rlp::new(&s.out())).is_err());
+    }
+
+    #[test]
+    fn verifies_receipts_root() {
+        let values = [
+            eth69_receipt_trie_value(&rlp::Rlp::new(&eth69_receipt(2, &one_log(), &[]))).unwrap(),
+        ];
+        let root = ordered_trie_root(&values);
+        let mut h = header(1, 0x01, 0x00);
+        h.receipts_root = root.to_vec();
+
+        assert!(verify_receipts(&[h.clone()], &[root]).is_ok());
+        assert!(verify_receipts(&[h.clone()], &[EMPTY_TRIE_ROOT]).is_err());
+        assert!(verify_receipts(&[h], &[root, root]).is_err());
     }
 }

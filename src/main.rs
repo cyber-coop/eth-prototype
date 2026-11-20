@@ -449,7 +449,16 @@ fn main() {
                                     warn!("Peer returned no receipts, will retry batch");
                                     return Err(block_headers);
                                 }
-                                receipts.extend(batch_receipts);
+                                let roots: Vec<_> =
+                                    batch_receipts.iter().map(|(root, _)| *root).collect();
+                                if let Err(e) = verify::verify_receipts(
+                                    &block_headers[receipts.len()..],
+                                    &roots,
+                                ) {
+                                    warn!("Invalid receipts from peer, will retry batch: {}", e);
+                                    return Err(block_headers);
+                                }
+                                receipts.extend(batch_receipts.into_iter().map(|(_, r)| r));
                             }
                         }
 
@@ -713,7 +722,15 @@ fn main() {
                             retry_headers = Some(block_headers);
                             continue 'outer;
                         }
-                        receipts.extend(batch_receipts);
+                        let roots: Vec<_> = batch_receipts.iter().map(|(root, _)| *root).collect();
+                        if let Err(e) =
+                            verify::verify_receipts(&block_headers[receipts.len()..], &roots)
+                        {
+                            warn!("Invalid receipts from peer, will retry batch: {}", e);
+                            retry_headers = Some(block_headers);
+                            continue 'outer;
+                        }
+                        receipts.extend(batch_receipts.into_iter().map(|(_, r)| r));
                     }
                 }
 
