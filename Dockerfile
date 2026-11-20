@@ -1,5 +1,5 @@
 ##### BUILDER #####
-FROM rust:1.93-slim-trixie AS builder
+FROM rust:1.99-slim-trixie AS builder
 
 WORKDIR /usr/src/eth-prototype
 
