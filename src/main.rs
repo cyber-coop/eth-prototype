@@ -25,16 +25,37 @@ const REORG_SAFETY_DEPTH: usize = 64;
 // How long forward sync waits for the database thread to save a batch.
 const DB_CONFIRM_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Connects to Postgres, retrying every 20 seconds until it succeeds.
+fn connect_with_retry(params: &str) -> postgres::Client {
+    loop {
+        match postgres::Client::connect(params, postgres::NoTls) {
+            Ok(client) => return client,
+            Err(e) => {
+                warn!(
+                    "Fail to connect to database ({}). Retrying in 20 seconds...",
+                    e
+                );
+                thread::sleep(Duration::from_secs(20));
+            }
+        }
+    }
+}
+
 type LastConfirmed = std::sync::Mutex<Option<(u32, Vec<u8>)>>;
 
 /// Waits until the database thread has saved block `number` (or later).
-async fn wait_for_db(last_confirmed: &LastConfirmed, number: u32) -> bool {
+/// Returns false on timeout or if the database thread has stopped.
+async fn wait_for_db<T>(
+    last_confirmed: &LastConfirmed,
+    number: u32,
+    db_sender: &tokio::sync::mpsc::Sender<T>,
+) -> bool {
     let deadline = tokio::time::Instant::now() + DB_CONFIRM_TIMEOUT;
     loop {
         if matches!(*last_confirmed.lock().unwrap(), Some((n, _)) if n >= number) {
             return true;
         }
-        if tokio::time::Instant::now() > deadline {
+        if db_sender.is_closed() || tokio::time::Instant::now() > deadline {
             return false;
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -64,7 +85,6 @@ fn main() {
      *  Connect to postgres
      *
      ******************/
-    let mut postgres_client: postgres::Client;
     let database_params: String = format!(
         "host={} user={} password={} dbname={}",
         config.database.host,
@@ -72,20 +92,7 @@ fn main() {
         config.database.password,
         config.database.dbname
     );
-    loop {
-        let result = postgres::Client::connect(&database_params, postgres::NoTls);
-
-        match result {
-            Ok(client) => {
-                postgres_client = client;
-                break;
-            }
-            Err(_) => {
-                warn!("Fail to connect to database. Retrying in 20 seconds...");
-                thread::sleep(Duration::from_secs(20));
-            }
-        }
-    }
+    let mut postgres_client = connect_with_retry(&database_params);
     info!("Connected to database");
 
     // create the tables if they don't exist
@@ -169,7 +176,7 @@ fn main() {
         info!("Starting database thread");
 
         // Connect to database
-        let mut postgres_client = postgres::Client::connect(&db_params, postgres::NoTls).unwrap();
+        let mut postgres_client = connect_with_retry(&db_params);
 
         // while recv save blocks in database
         // Out-of-order batches are held in a cache keyed by their first block
@@ -184,7 +191,10 @@ fn main() {
         let mut cache: std::collections::BTreeMap<u32, Batch> = std::collections::BTreeMap::new();
 
         'recv: loop {
-            let blocks: Batch = rx.blocking_recv().unwrap();
+            let Some(blocks) = rx.blocking_recv() else {
+                // Every sender is gone: the sync loops have stopped.
+                break 'recv;
+            };
 
             // Always cache first — never blindly trust whichever batch happens to
             // arrive first. With concurrent body tasks, completion order and dispatch
@@ -215,7 +225,31 @@ fn main() {
                 };
                 let Some(batch) = batch else { break };
 
-                database::save_blocks(&batch, &network_arg, &mut postgres_client);
+                // Retry transient failures (e.g. Postgres restarting) with backoff.
+                // Each attempt is a single transaction, so a failed one leaves nothing behind.
+                let mut delay = Duration::from_secs(1);
+                loop {
+                    match database::save_blocks(&batch, &network_arg, &mut postgres_client) {
+                        Ok(()) => break,
+                        Err(e) if database::is_permanent_error(e.as_ref()) => {
+                            error!(
+                                "Cannot save blocks n° {} to {}: {}. Stopping database thread.",
+                                batch.first().unwrap().0.number,
+                                batch.last().unwrap().0.number,
+                                e
+                            );
+                            break 'recv;
+                        }
+                        Err(e) => {
+                            warn!("Failed to save blocks ({}), retrying in {:?}", e, delay);
+                            thread::sleep(delay);
+                            delay = (delay * 2).min(Duration::from_secs(60));
+                            if postgres_client.is_closed() {
+                                postgres_client = connect_with_retry(&db_params);
+                            }
+                        }
+                    }
+                }
                 let last = batch.last().unwrap().0.number;
                 *last_confirmed_db.lock().unwrap() =
                     Some((last, batch.last().unwrap().0.hash.clone()));
@@ -382,6 +416,13 @@ fn main() {
             let mut retry_queue: VecDeque<Vec<Block>> = VecDeque::new();
 
             'outer: loop {
+                // The database thread stops on errors it cannot recover from; batches
+                // would only be re-queued forever.
+                if tx.is_closed() {
+                    error!("Database thread stopped, stopping sync");
+                    break;
+                }
+
                 // Get an available connection; if the pool is empty or the concurrency
                 // limit is reached, wait for a body task to finish first. We only stop
                 // once every in-flight batch has completed, so a batch that fails late
@@ -609,8 +650,8 @@ fn main() {
                 } else {
                     // Make sure everything sent so far is saved before asking for more:
                     // a rollback must not race the DB thread saving the block it deletes.
-                    if !wait_for_db(&last_confirmed, current_number).await {
-                        error!("Database thread did not save block n° {} in time, stopping.", current_number);
+                    if !wait_for_db(&last_confirmed, current_number, &tx).await {
+                        error!("Database thread stopped or did not save block n° {} in time, stopping.", current_number);
                         break 'outer;
                     }
 

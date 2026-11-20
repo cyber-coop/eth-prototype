@@ -105,7 +105,7 @@ pub fn save_blocks(
     )>,
     schema_name: &String,
     postgres_client: &mut Client,
-) {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // register in database
     let now = Instant::now();
     let mut blocks_string: String = String::new();
@@ -261,69 +261,55 @@ pub fn save_blocks(
     info!("Finished formating blocks and transactions message");
 
     // start a transaction to do rollback in case something goes wrong
-    let mut transaction = postgres_client.transaction().unwrap();
+    let mut transaction = postgres_client.transaction()?;
     let mut block_writer = transaction
-        .copy_in(format!("COPY {}.blocks FROM stdin (DELIMITER ';')", schema_name).as_str())
-        .unwrap();
-    block_writer.write_all(blocks_string.as_bytes()).unwrap();
-    block_writer.finish().unwrap();
+        .copy_in(format!("COPY {}.blocks FROM stdin (DELIMITER ';')", schema_name).as_str())?;
+    block_writer.write_all(blocks_string.as_bytes())?;
+    block_writer.finish()?;
 
     let mut contract_writer = transaction
-        .copy_in(format!("COPY {}.contracts FROM stdin (DELIMITER ';')", schema_name).as_str())
-        .unwrap();
-    contract_writer
-        .write_all(contracts_string.as_bytes())
-        .unwrap();
-    contract_writer.finish().unwrap();
+        .copy_in(format!("COPY {}.contracts FROM stdin (DELIMITER ';')", schema_name).as_str())?;
+    contract_writer.write_all(contracts_string.as_bytes())?;
+    contract_writer.finish()?;
 
     let mut ommers_writer = transaction
-        .copy_in(format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name).as_str())
-        .unwrap();
-    ommers_writer.write_all(ommers_string.as_bytes()).unwrap();
-    ommers_writer.finish().unwrap();
+        .copy_in(format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name).as_str())?;
+    ommers_writer.write_all(ommers_string.as_bytes())?;
+    ommers_writer.finish()?;
 
-    let mut withdrawals_writer = transaction
-        .copy_in(
-            format!(
-                "COPY {}.withdrawals FROM stdin (DELIMITER ';')",
-                schema_name
-            )
-            .as_str(),
+    let mut withdrawals_writer = transaction.copy_in(
+        format!(
+            "COPY {}.withdrawals FROM stdin (DELIMITER ';')",
+            schema_name
         )
-        .unwrap();
-    withdrawals_writer
-        .write_all(withdrawals_string.as_bytes())
-        .unwrap();
-    withdrawals_writer.finish().unwrap();
+        .as_str(),
+    )?;
+    withdrawals_writer.write_all(withdrawals_string.as_bytes())?;
+    withdrawals_writer.finish()?;
 
     let mut receipt_writer = transaction
-        .copy_in(format!("COPY {}.receipts FROM stdin (DELIMITER ';')", schema_name).as_str())
-        .unwrap();
-    receipt_writer
-        .write_all(receipts_string.as_bytes())
-        .unwrap();
-    receipt_writer.finish().unwrap();
+        .copy_in(format!("COPY {}.receipts FROM stdin (DELIMITER ';')", schema_name).as_str())?;
+    receipt_writer.write_all(receipts_string.as_bytes())?;
+    receipt_writer.finish()?;
 
     let mut chunk_index = 0;
     let _number_of_chunks = transactions_strings.len();
     for txs in transactions_strings {
-        let mut transaction_writer = transaction
-            .copy_in(
-                format!(
-                    "COPY {}.transactions FROM stdin (DELIMITER ';', NULL 'null')", // use ; as delimiter to avoid confusion with json
-                    schema_name
-                )
-                .as_str(),
+        let mut transaction_writer = transaction.copy_in(
+            format!(
+                "COPY {}.transactions FROM stdin (DELIMITER ';', NULL 'null')", // use ; as delimiter to avoid confusion with json
+                schema_name
             )
-            .unwrap();
-        transaction_writer.write_all(txs.as_bytes()).unwrap();
-        transaction_writer.finish().unwrap();
+            .as_str(),
+        )?;
+        transaction_writer.write_all(txs.as_bytes())?;
+        transaction_writer.finish()?;
 
         chunk_index = chunk_index + 1;
     }
 
     // commit the transaction
-    transaction.commit().unwrap();
+    transaction.commit()?;
 
     let current_height = blocks.last().unwrap().0.number;
 
@@ -332,6 +318,24 @@ pub fn save_blocks(
         current_height,
         now.elapsed()
     );
+
+    Ok(())
+}
+
+/// Whether a save error will fail again if retried: bad data, constraint
+/// violations or a schema mismatch (SQLSTATE classes 22, 23 and 42). Anything
+/// else (connection lost, server restarting...) is worth retrying.
+pub fn is_permanent_error(err: &(dyn std::error::Error + 'static)) -> bool {
+    // COPY writers report errors as io::Error wrapping the postgres error.
+    let pg_err = err.downcast_ref::<postgres::Error>().or_else(|| {
+        err.downcast_ref::<std::io::Error>()
+            .and_then(|e| e.get_ref())
+            .and_then(|e| e.downcast_ref::<postgres::Error>())
+    });
+    match pg_err.and_then(|e| e.code()) {
+        Some(code) => matches!(&code.code()[..2], "22" | "23" | "42"),
+        None => false,
+    }
 }
 
 #[cfg(test)]
