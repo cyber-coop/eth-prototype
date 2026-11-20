@@ -172,7 +172,8 @@ fn main() {
     let last_confirmed_db = last_confirmed.clone();
 
     let db_params = database_params.clone();
-    let database_handle = thread::spawn(move || {
+    // Returns true once the initial sync has reached genesis.
+    let database_handle = thread::spawn(move || -> bool {
         info!("Starting database thread");
 
         // Connect to database
@@ -188,6 +189,7 @@ fn main() {
             Vec<Withdrawal>,
             Vec<Receipt>,
         )>;
+        let mut synced = false;
         let mut cache: std::collections::BTreeMap<u32, Batch> = std::collections::BTreeMap::new();
 
         'recv: loop {
@@ -259,12 +261,14 @@ fn main() {
                         "We are synced ! We are creating the indexes on the tables... This will take a while."
                     );
                     utils::open_exec_sql_file(&network_arg, &mut postgres_client);
+                    synced = true;
                     break 'recv;
                 }
             }
         }
 
         info!("Closing thread!");
+        synced
     });
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -878,6 +882,24 @@ fn main() {
         }
     });
 
-    // need to wait for database thread to finish
-    database_handle.join().unwrap();
+    // The sync loops are done: dropping the last sender lets the database thread
+    // finish what it can and exit instead of waiting forever for more batches.
+    drop(tx);
+    drop(rt);
+
+    let synced = match database_handle.join() {
+        Ok(synced) => synced,
+        Err(_) => {
+            error!("Database thread panicked");
+            false
+        }
+    };
+
+    // Forward sync is meant to run forever, so stopping before reaching genesis
+    // (initial sync) or at all (forward sync) is a failure. A non-zero exit lets
+    // a supervisor restart the indexer.
+    if !synced {
+        error!("Sync stopped before completing, exiting with an error");
+        std::process::exit(1);
+    }
 }
