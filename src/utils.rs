@@ -9,8 +9,8 @@ use sha3::{Digest, Keccak256};
 use std::borrow::BorrowMut;
 use std::error;
 use std::time::Duration;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 use super::mac;
 
@@ -345,7 +345,7 @@ pub fn create_body(
 
 pub async fn send_message(
     msg: Vec<u8>,
-    stream: &mut tokio::net::TcpStream,
+    stream: &mut OwnedWriteHalf,
     egress_mac: &mut mac::MAC,
     egress_aes: &mut Aes256Ctr64BE,
 ) -> Result<(), Box<dyn error::Error + Send + Sync>> {
@@ -364,7 +364,7 @@ pub async fn send_message(
 }
 
 pub async fn read_message(
-    stream: &mut tokio::net::TcpStream,
+    stream: &mut OwnedReadHalf,
     ingress_mac: &mut mac::MAC,
     ingress_aes: &mut Aes256Ctr64BE,
 ) -> Result<Vec<u8>, Box<dyn error::Error + Send + Sync>> {

@@ -86,10 +86,15 @@ impl Connection {
 
         info!("Frame setup done !");
 
+        // Split the stream so reads and writes can later run in separate tasks.
+        // Reading inside a `select!` is not cancel-safe: a partially read frame
+        // would be dropped whenever a write won the race, desynchronising the stream.
+        let (mut reader, mut writer) = stream.into_split();
+
         info!("Received Ack, waiting for Header");
 
         let uncrypted_body =
-            utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes).await?;
+            utils::read_message(&mut reader, &mut ingress_mac, &mut ingress_aes).await?;
 
         if uncrypted_body[0] == 0x01 {
             warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
@@ -129,7 +134,7 @@ impl Connection {
                 .to_vec(),
         };
         let hello = message::create_hello_message(hello_message);
-        utils::send_message(hello, &mut stream, &mut egress_mac, &mut egress_aes).await?;
+        utils::send_message(hello, &mut writer, &mut egress_mac, &mut egress_aes).await?;
 
         info!("Sending STATUS message");
 
@@ -166,11 +171,11 @@ impl Connection {
             };
             payload = eth::create_status_message(status);
         }
-        utils::send_message(payload, &mut stream, &mut egress_mac, &mut egress_aes).await?;
+        utils::send_message(payload, &mut writer, &mut egress_mac, &mut egress_aes).await?;
 
         info!("Handling STATUS message");
         let uncrypted_body =
-            utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes).await?;
+            utils::read_message(&mut reader, &mut ingress_mac, &mut ingress_aes).await?;
         if uncrypted_body[0] == 0x01 {
             warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
 
@@ -219,7 +224,7 @@ impl Connection {
             let upgrade_status = eth::create_upgrade_status_message();
             utils::send_message(
                 upgrade_status,
-                &mut stream,
+                &mut writer,
                 &mut egress_mac,
                 &mut egress_aes,
             )
@@ -231,85 +236,105 @@ impl Connection {
         let (tx_tcp, rx_tcp) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
         let (tx_write, mut rx_write) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
 
-        let handle = tokio::spawn(async move {
-            let mut code;
-            loop {
-                tokio::select! {
-                    result = utils::read_message(&mut stream, &mut ingress_mac, &mut ingress_aes) => {
-                        let uncrypted_body = match result {
-                            Ok(b) => b,
-                            Err(e) => { warn!("Read error: {}", e); return; }
-                        };
+        let tx_reply = tx_write.clone();
 
-                        // handle RLPx message
-                        if uncrypted_body[0] < 16 {
-                            code = uncrypted_body[0];
-
-                            if code == 2 {
-                                // send pong
-                                let pong = message::create_pong_message();
-                                if let Err(e) = utils::send_message(pong, &mut stream, &mut egress_mac, &mut egress_aes).await {
-                                    warn!("Failed to send pong: {}", e);
-                                    return;
-                                }
-                                continue;
-                            }
-
-                            if code == 1 {
-                                let mut dec = snap::raw::Decoder::new();
-                                match dec.decompress_vec(&uncrypted_body[1..]) {
-                                    Ok(message) => warn!("Disconnected ! {}", hex::encode(&message)),
-                                    Err(_) => warn!("Disconnected ! (failed to decompress message)"),
-                                }
-                                return;
-                            }
-
-                            info!("Unknown code {}", uncrypted_body[0]);
-                            info!("{}", hex::encode(&uncrypted_body));
-                            continue;
-                        }
-
-                        // drop mempool gossip — we never consume these
-                        match uncrypted_body[0] - 16 {
-                            1 => trace!("NewBlockHashes received"),
-                            2 | 7 | 8 | 9 | 10 => continue,
-                            _ => {}
-                        }
-
-                        if uncrypted_body[0] - 16 == 11 {
-                            let mut dec = snap::raw::Decoder::new();
-                            let message = dec.decompress_vec(&uncrypted_body[1..].to_vec()).unwrap();
-                            info!("upgrade status message received (only binance) : {}", hex::encode(&message));
-                        }
-
-                        if uncrypted_body[0] - 16 == 3 {
-                            let req_id = eth::parse_get_block_bodies(uncrypted_body[1..].to_vec());
-                            let empty_block_bodies_message = eth::create_empty_block_headers_message(&req_id);
-                            if let Err(e) = utils::send_message(empty_block_bodies_message, &mut stream, &mut egress_mac, &mut egress_aes).await {
-                                warn!("Failed to send empty headers: {}", e);
-                                return;
-                            }
-                        }
-
-                        match tx_tcp.try_send(uncrypted_body) {
-                            Ok(_) => {}
-                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                                warn!("rx_tcp channel full, dropping message");
-                            }
-                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                                break;
-                            }
-                        }
-                    }
-                    Some(msg) = rx_write.recv() => {
-                        if let Err(e) = utils::send_message(msg, &mut stream, &mut egress_mac, &mut egress_aes).await {
+        let handle =
+            tokio::spawn(async move {
+                // Writer: sole owner of the egress state.
+                let writer_handle = tokio::spawn(async move {
+                    while let Some(msg) = rx_write.recv().await {
+                        if let Err(e) =
+                            utils::send_message(msg, &mut writer, &mut egress_mac, &mut egress_aes)
+                                .await
+                        {
                             warn!("Failed to send message: {}", e);
                             return;
                         }
                     }
+                });
+
+                // Reader: sole owner of the ingress state. Replies (pong, empty
+                // headers) go through the writer's channel.
+                loop {
+                    let uncrypted_body =
+                        match utils::read_message(&mut reader, &mut ingress_mac, &mut ingress_aes)
+                            .await
+                        {
+                            Ok(b) => b,
+                            Err(e) => {
+                                warn!("Read error: {}", e);
+                                break;
+                            }
+                        };
+
+                    // handle RLPx message
+                    if uncrypted_body[0] < 16 {
+                        let code = uncrypted_body[0];
+
+                        if code == 2 {
+                            // send pong
+                            if tx_reply.send(message::create_pong_message()).await.is_err() {
+                                warn!("Failed to send pong: writer closed");
+                                break;
+                            }
+                            continue;
+                        }
+
+                        if code == 1 {
+                            let mut dec = snap::raw::Decoder::new();
+                            match dec.decompress_vec(&uncrypted_body[1..]) {
+                                Ok(message) => warn!("Disconnected ! {}", hex::encode(&message)),
+                                Err(_) => warn!("Disconnected ! (failed to decompress message)"),
+                            }
+                            break;
+                        }
+
+                        info!("Unknown code {}", uncrypted_body[0]);
+                        info!("{}", hex::encode(&uncrypted_body));
+                        continue;
+                    }
+
+                    // drop mempool gossip — we never consume these
+                    match uncrypted_body[0] - 16 {
+                        1 => trace!("NewBlockHashes received"),
+                        2 | 7 | 8 | 9 | 10 => continue,
+                        _ => {}
+                    }
+
+                    if uncrypted_body[0] - 16 == 11 {
+                        let mut dec = snap::raw::Decoder::new();
+                        match dec.decompress_vec(&uncrypted_body[1..]) {
+                            Ok(message) => info!(
+                                "upgrade status message received (only binance) : {}",
+                                hex::encode(&message)
+                            ),
+                            Err(_) => warn!("Failed to decompress upgrade status message"),
+                        }
+                    }
+
+                    if uncrypted_body[0] - 16 == 3 {
+                        let req_id = eth::parse_get_block_bodies(uncrypted_body[1..].to_vec());
+                        let empty_block_headers_message =
+                            eth::create_empty_block_headers_message(&req_id);
+                        if tx_reply.send(empty_block_headers_message).await.is_err() {
+                            warn!("Failed to send empty headers: writer closed");
+                            break;
+                        }
+                    }
+
+                    match tx_tcp.try_send(uncrypted_body) {
+                        Ok(_) => {}
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            warn!("rx_tcp channel full, dropping message");
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            break;
+                        }
+                    }
                 }
-            }
-        });
+
+                writer_handle.abort();
+            });
 
         Ok(Self {
             handle,
