@@ -25,6 +25,98 @@ const REORG_SAFETY_DEPTH: usize = 64;
 // How long forward sync waits for the database thread to save a batch.
 const DB_CONFIRM_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// A block with everything saved alongside it: header, transactions, ommers,
+/// withdrawals and receipts (empty when the peer is not eth69).
+type BlockData = (
+    Block,
+    Vec<Transaction>,
+    Vec<Block>,
+    Vec<Withdrawal>,
+    Vec<Receipt>,
+);
+
+/// Fetches the bodies (and the receipts, over eth69) of `headers` from `conn`
+/// and checks them against the headers.
+///
+/// Returns `None` if the peer fails, times out or sends invalid data; the
+/// caller should retry the batch on another peer.
+async fn fetch_batch(conn: &mut Connection, headers: &[Block]) -> Option<Vec<BlockData>> {
+    let hashes: Vec<Vec<u8>> = headers.iter().map(|b| b.hash.clone()).collect();
+
+    let mut bodies_data: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
+        Vec::with_capacity(hashes.len());
+    while bodies_data.len() < hashes.len() {
+        info!(
+            "Sending GetBlockBodies ({}/{})",
+            bodies_data.len(),
+            hashes.len()
+        );
+        let req_id = eth::next_request_id();
+        let get_bodies =
+            eth::create_get_block_bodies_message(&hashes[bodies_data.len()..].to_vec(), req_id);
+        let Some(body) = conn.request(get_bodies, BLOCK_BODIES_CODE, req_id).await else {
+            warn!("GetBlockBodies failed, will retry batch");
+            return None;
+        };
+        let bodies = eth::parse_block_bodies(&body);
+        if bodies.is_empty() {
+            warn!("Peer returned no block bodies, will retry batch");
+            return None;
+        }
+        let roots: Vec<_> = bodies.iter().map(|(r, _)| r.clone()).collect();
+        if let Err(e) = verify::verify_block_bodies(&headers[bodies_data.len()..], &roots) {
+            warn!("Invalid block bodies from peer, will retry batch: {}", e);
+            return None;
+        }
+        bodies_data.extend(bodies.into_iter().map(|(_, b)| b));
+    }
+
+    let mut receipts: Vec<Vec<Receipt>> = vec![];
+    if conn.eth_protocol_version == 69 {
+        receipts.reserve(hashes.len());
+        while receipts.len() < hashes.len() {
+            info!("Sending GetReceipts ({}/{})", receipts.len(), hashes.len());
+            let req_id = eth::next_request_id();
+            let get_receipts =
+                eth::create_get_receipts_message(&hashes[receipts.len()..].to_vec(), req_id);
+            let Some(body) = conn.request(get_receipts, RECEIPTS_CODE, req_id).await else {
+                warn!("GetReceipts failed, will retry batch");
+                return None;
+            };
+            let batch_receipts = eth::parse_receipts(&body);
+            if batch_receipts.is_empty() {
+                warn!("Peer returned no receipts, will retry batch");
+                return None;
+            }
+            let roots: Vec<_> = batch_receipts.iter().map(|(root, _)| *root).collect();
+            if let Err(e) = verify::verify_receipts(&headers[receipts.len()..], &roots) {
+                warn!("Invalid receipts from peer, will retry batch: {}", e);
+                return None;
+            }
+            receipts.extend(batch_receipts.into_iter().map(|(_, r)| r));
+        }
+    }
+
+    // Move the fetched data into the blocks instead of cloning it.
+    let mut receipts = receipts.into_iter();
+    Some(
+        headers
+            .iter()
+            .cloned()
+            .zip(bodies_data)
+            .map(|(header, (txs, ommers, withdrawals))| {
+                (
+                    header,
+                    txs,
+                    ommers,
+                    withdrawals,
+                    receipts.next().unwrap_or_default(),
+                )
+            })
+            .collect(),
+    )
+}
+
 /// Connects to Postgres, retrying every 20 seconds until it succeeds.
 fn connect_with_retry(params: &str) -> postgres::Client {
     loop {
@@ -151,15 +243,7 @@ fn main() {
      ********************/
 
     // Create a queue with a maximum of 20480 blocks (20 * 1024 = 20480 blocks). We query blocks by batch of 1024 blocks.
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<
-        Vec<(
-            Block,
-            Vec<Transaction>,
-            Vec<Block>,
-            Vec<Withdrawal>,
-            Vec<Receipt>,
-        )>,
-    >(20);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<BlockData>>(20);
 
     // Shared between DB thread and forward sync: last block number + hash confirmed saved.
     // Forward sync also resets it when rolling back a re-orged block, so the DB
@@ -182,13 +266,7 @@ fn main() {
         // while recv save blocks in database
         // Out-of-order batches are held in a cache keyed by their first block
         // number until the missing predecessor arrives.
-        type Batch = Vec<(
-            Block,
-            Vec<Transaction>,
-            Vec<Block>,
-            Vec<Withdrawal>,
-            Vec<Receipt>,
-        )>;
+        type Batch = Vec<BlockData>;
         let mut synced = false;
         let mut cache: std::collections::BTreeMap<u32, Batch> = std::collections::BTreeMap::new();
 
@@ -509,92 +587,9 @@ fn main() {
                 body_tasks.spawn(async move {
                     let fetch = tokio::spawn(async move {
                         let mut conn = conn;
-                        let hashes: Vec<Vec<u8>> =
-                            block_headers.iter().map(|b| b.hash.clone()).collect();
-                        let eth_version = conn.eth_protocol_version;
-
-                        let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-                            vec![];
-                        while transactions.len() < hashes.len() {
-                            info!(
-                                "Sending GetBlockBodies ({}/{})",
-                                transactions.len(),
-                                hashes.len()
-                            );
-                            let req_id = eth::next_request_id();
-                            let get_bodies = eth::create_get_block_bodies_message(
-                                &hashes[transactions.len()..].to_vec(),
-                                req_id,
-                            );
-                            let Some(body) =
-                                conn.request(get_bodies, BLOCK_BODIES_CODE, req_id).await
-                            else {
-                                warn!("GetBlockBodies failed, will retry batch");
-                                return Err(block_headers);
-                            };
-                            let bodies = eth::parse_block_bodies(&body);
-                            if bodies.is_empty() {
-                                warn!("Peer returned no block bodies, will retry batch");
-                                return Err(block_headers);
-                            }
-                            let roots: Vec<_> = bodies.iter().map(|(r, _)| r.clone()).collect();
-                            if let Err(e) = verify::verify_block_bodies(
-                                &block_headers[transactions.len()..],
-                                &roots,
-                            ) {
-                                warn!("Invalid block bodies from peer, will retry batch: {}", e);
-                                return Err(block_headers);
-                            }
-                            transactions.extend(bodies.into_iter().map(|(_, b)| b));
-                        }
-
-                        let mut receipts: Vec<Vec<Receipt>> = vec![];
-                        if eth_version == 69 {
-                            while receipts.len() < hashes.len() {
-                                info!(
-                                    "Sending GetReceipts ({}/{})",
-                                    receipts.len(),
-                                    hashes.len()
-                                );
-                                let req_id = eth::next_request_id();
-                                let get_receipts = eth::create_get_receipts_message(
-                                    &hashes[receipts.len()..].to_vec(),
-                                    req_id,
-                                );
-                                let Some(body) =
-                                    conn.request(get_receipts, RECEIPTS_CODE, req_id).await
-                                else {
-                                    warn!("GetReceipts failed, will retry batch");
-                                    return Err(block_headers);
-                                };
-                                let batch_receipts = eth::parse_receipts(&body);
-                                if batch_receipts.is_empty() {
-                                    warn!("Peer returned no receipts, will retry batch");
-                                    return Err(block_headers);
-                                }
-                                let roots: Vec<_> =
-                                    batch_receipts.iter().map(|(root, _)| *root).collect();
-                                if let Err(e) = verify::verify_receipts(
-                                    &block_headers[receipts.len()..],
-                                    &roots,
-                                ) {
-                                    warn!("Invalid receipts from peer, will retry batch: {}", e);
-                                    return Err(block_headers);
-                                }
-                                receipts.extend(batch_receipts.into_iter().map(|(_, r)| r));
-                            }
-                        }
-
-                        let blocks: Vec<_> = block_headers
-                            .iter()
-                            .enumerate()
-                            .map(|(i, header)| {
-                                let (txs, ommers, withdrawals) = transactions[i].clone();
-                                let block_receipts =
-                                    if eth_version == 69 { receipts[i].clone() } else { vec![] };
-                                (header.clone(), txs, ommers, withdrawals, block_receipts)
-                            })
-                            .collect();
+                        let Some(blocks) = fetch_batch(&mut conn, &block_headers).await else {
+                            return Err(block_headers);
+                        };
 
                         let current_height = blocks.last().unwrap().0.number;
                         info!("Blocks n° {}", current_height);
@@ -785,89 +780,10 @@ fn main() {
                     headers
                 };
 
-                let hashes: Vec<Vec<u8>> =
-                    block_headers.iter().map(|b| b.hash.clone()).collect();
-                let eth_version = conn.eth_protocol_version;
-
-                let mut transactions: Vec<(Vec<Transaction>, Vec<Block>, Vec<Withdrawal>)> =
-                    vec![];
-                while transactions.len() < hashes.len() {
-                    info!(
-                        "Sending GetBlockBodies ({}/{})",
-                        transactions.len(),
-                        hashes.len()
-                    );
-                    let req_id = eth::next_request_id();
-                    let get_bodies = eth::create_get_block_bodies_message(
-                        &hashes[transactions.len()..].to_vec(),
-                        req_id,
-                    );
-                    let Some(body) = conn.request(get_bodies, BLOCK_BODIES_CODE, req_id).await
-                    else {
-                        warn!("GetBlockBodies failed, will retry batch");
-                        retry_headers = Some(block_headers);
-                        continue 'outer;
-                    };
-                    let bodies = eth::parse_block_bodies(&body);
-                    if bodies.is_empty() {
-                        warn!("Peer returned no block bodies, will retry batch");
-                        retry_headers = Some(block_headers);
-                        continue 'outer;
-                    }
-                    let roots: Vec<_> = bodies.iter().map(|(r, _)| r.clone()).collect();
-                    if let Err(e) =
-                        verify::verify_block_bodies(&block_headers[transactions.len()..], &roots)
-                    {
-                        warn!("Invalid block bodies from peer, will retry batch: {}", e);
-                        retry_headers = Some(block_headers);
-                        continue 'outer;
-                    }
-                    transactions.extend(bodies.into_iter().map(|(_, b)| b));
-                }
-
-                let mut receipts: Vec<Vec<Receipt>> = vec![];
-                if eth_version == 69 {
-                    while receipts.len() < hashes.len() {
-                        info!("Sending GetReceipts ({}/{})", receipts.len(), hashes.len());
-                        let req_id = eth::next_request_id();
-                        let get_receipts = eth::create_get_receipts_message(
-                            &hashes[receipts.len()..].to_vec(),
-                            req_id,
-                        );
-                        let Some(body) = conn.request(get_receipts, RECEIPTS_CODE, req_id).await
-                        else {
-                            warn!("GetReceipts failed, will retry batch");
-                            retry_headers = Some(block_headers);
-                            continue 'outer;
-                        };
-                        let batch_receipts = eth::parse_receipts(&body);
-                        if batch_receipts.is_empty() {
-                            warn!("Peer returned no receipts, will retry batch");
-                            retry_headers = Some(block_headers);
-                            continue 'outer;
-                        }
-                        let roots: Vec<_> = batch_receipts.iter().map(|(root, _)| *root).collect();
-                        if let Err(e) =
-                            verify::verify_receipts(&block_headers[receipts.len()..], &roots)
-                        {
-                            warn!("Invalid receipts from peer, will retry batch: {}", e);
-                            retry_headers = Some(block_headers);
-                            continue 'outer;
-                        }
-                        receipts.extend(batch_receipts.into_iter().map(|(_, r)| r));
-                    }
-                }
-
-                let blocks: Vec<_> = block_headers
-                    .iter()
-                    .enumerate()
-                    .map(|(i, header)| {
-                        let (txs, ommers, withdrawals) = transactions[i].clone();
-                        let block_receipts =
-                            if eth_version == 69 { receipts[i].clone() } else { vec![] };
-                        (header.clone(), txs, ommers, withdrawals, block_receipts)
-                    })
-                    .collect();
+                let Some(blocks) = fetch_batch(&mut conn, &block_headers).await else {
+                    retry_headers = Some(block_headers);
+                    continue 'outer;
+                };
 
                 let current_height = blocks.last().unwrap().0.number;
                 info!("Blocks n° {}", current_height);
