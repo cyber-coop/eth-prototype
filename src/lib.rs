@@ -7,6 +7,7 @@ pub mod message;
 pub mod networks;
 pub mod types;
 pub mod utils;
+pub mod verify;
 
 #[macro_use]
 extern crate log;

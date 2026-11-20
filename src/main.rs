@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use eth_prototype::connection::{BLOCK_BODIES_CODE, BLOCK_HEADERS_CODE, Connection, RECEIPTS_CODE};
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
-use eth_prototype::{configs, database, networks, utils};
+use eth_prototype::{configs, database, networks, utils, verify};
 
 #[macro_use]
 extern crate log;
@@ -366,6 +366,14 @@ fn main() {
                         continue;
                     }
 
+                    if let Err(e) =
+                        verify::verify_header_chain(&headers, &current_hash, true, BLOCK_NUM)
+                    {
+                        // Drop the peer; the same request goes to the next connection.
+                        warn!("Invalid block headers from peer, dropping connection: {}", e);
+                        continue;
+                    }
+
                     current_hash = headers.last().unwrap().parent_hash.to_vec();
                     headers
                 };
@@ -580,6 +588,14 @@ fn main() {
                                 warn!("Re-org rollback query failed: {}", e);
                             }
                         }
+                        continue;
+                    }
+
+                    if let Err(e) =
+                        verify::verify_header_chain(&headers, &current_hash, false, BLOCK_NUM)
+                    {
+                        // Drop the peer; the same request goes to the next connection.
+                        warn!("Invalid block headers from peer, dropping connection: {}", e);
                         continue;
                     }
 
