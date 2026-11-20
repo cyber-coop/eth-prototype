@@ -229,8 +229,9 @@ pub fn parse_request_id(payload: &[u8]) -> Option<u64> {
     rlp::Rlp::new(&message).at(0).ok()?.as_val().ok()
 }
 
-pub fn create_get_block_headers_message(
-    hash: &Vec<u8>,
+/// `origin` is either a block hash (`Vec<u8>`) or a block number (`u32`/`u64`).
+pub fn create_get_block_headers_message<O: rlp::Encodable>(
+    origin: &O,
     block_num: usize,
     skip: usize,
     reverse: bool,
@@ -242,8 +243,8 @@ pub fn create_get_block_headers_message(
     s.append(&req_id);
 
     s.begin_list(4);
-    // block
-    s.append(hash);
+    // origin: block hash or number
+    s.append(origin);
     // block numbers
     s.append(&block_num);
     // skip

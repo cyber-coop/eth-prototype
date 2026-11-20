@@ -17,6 +17,30 @@ extern crate log;
 // max value seems to be 1024 (https://github.com/ethereum/go-ethereum/blob/master/eth/protocols/eth/handler.go#L40)
 const BLOCK_NUM: usize = 1024;
 
+// Blocks this close to the tip can still be reorged out. The initial reverse
+// sync starts this many blocks behind the tip; forward sync catches up later
+// and handles reorgs.
+const REORG_SAFETY_DEPTH: usize = 64;
+
+// How long forward sync waits for the database thread to save a batch.
+const DB_CONFIRM_TIMEOUT: Duration = Duration::from_secs(600);
+
+type LastConfirmed = std::sync::Mutex<Option<(u32, Vec<u8>)>>;
+
+/// Waits until the database thread has saved block `number` (or later).
+async fn wait_for_db(last_confirmed: &LastConfirmed, number: u32) -> bool {
+    let deadline = tokio::time::Instant::now() + DB_CONFIRM_TIMEOUT;
+    loop {
+        if matches!(*last_confirmed.lock().unwrap(), Some((n, _)) if n >= number) {
+            return true;
+        }
+        if tokio::time::Instant::now() > deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 fn main() {
     // Init log
     env_logger::init();
@@ -32,6 +56,7 @@ fn main() {
     // Load config values from the config file
     let config = configs::read_config();
     let mut current_hash: Vec<u8> = vec![];
+    let mut current_number: u32 = 0; // only meaningful for forward sync
     let mut reverse = true; // when we init syncing we go from the tip to the genesis block
 
     /******************
@@ -93,10 +118,12 @@ fn main() {
 
             let row = &result[0];
             let hash = row.try_get(0);
+            let number: i32 = row.get(1);
 
             match hash {
                 Ok(h) => {
                     current_hash = h;
+                    current_number = number as u32;
                     reverse = false; // The initial sync has been done. We keep indexing the new incoming blocks now.
                 }
                 Err(_) => {
@@ -128,8 +155,13 @@ fn main() {
     >(20);
 
     // Shared between DB thread and forward sync: last block number + hash confirmed saved.
-    let last_confirmed: Arc<std::sync::Mutex<Option<(u32, Vec<u8>)>>> =
-        Arc::new(std::sync::Mutex::new(None));
+    // Forward sync also resets it when rolling back a re-orged block, so the DB
+    // thread knows which batch comes next.
+    let last_confirmed: Arc<LastConfirmed> = Arc::new(std::sync::Mutex::new(if reverse {
+        None
+    } else {
+        Some((current_number, current_hash.clone()))
+    }));
     let last_confirmed_db = last_confirmed.clone();
 
     let db_params = database_params.clone();
@@ -149,7 +181,6 @@ fn main() {
             Vec<Withdrawal>,
             Vec<Receipt>,
         )>;
-        let mut last_block_number: Option<u32> = None;
         let mut cache: std::collections::BTreeMap<u32, Batch> = std::collections::BTreeMap::new();
 
         'recv: loop {
@@ -162,11 +193,13 @@ fn main() {
             let first_number = blocks.first().unwrap().0.number;
             cache.insert(first_number, blocks);
 
-            // Drain whatever is now reachable from the current position. On bootstrap
+            // Drain whatever is now reachable from the current position (the last
+            // confirmed block, shared with forward sync). On bootstrap
             // (last_block_number is None) the anchor is the highest key we've seen so
             // far in the cache, since reverse sync dispatches strictly downward from
             // the tip and that key can only ever be reached by the legitimate first batch.
             loop {
+                let last_block_number = last_confirmed_db.lock().unwrap().as_ref().map(|(n, _)| *n);
                 let batch = match last_block_number {
                     // Reverse sync descends (key = last - 1); forward sync ascends
                     // (key = last + 1) — try both since this thread serves either.
@@ -184,7 +217,6 @@ fn main() {
 
                 database::save_blocks(&batch, &network_arg, &mut postgres_client);
                 let last = batch.last().unwrap().0.number;
-                last_block_number = Some(last);
                 *last_confirmed_db.lock().unwrap() =
                     Some((last, batch.last().unwrap().0.hash.clone()));
 
@@ -222,6 +254,8 @@ fn main() {
         }
 
         info!("Tried all peers");
+
+        let mut start_from_tip = false;
 
         // Find the best hash among all the connections
         let mut counts: std::collections::HashMap<Vec<u8>, usize> =
@@ -269,6 +303,7 @@ fn main() {
             // If we don't have blocks in the database we use the best one
             if current_hash.len() == 0 {
                 current_hash = best_hash;
+                start_from_tip = true;
             }
         }
 
@@ -293,6 +328,49 @@ fn main() {
         }
 
         let mut pool: VecDeque<Connection> = connections.into_iter().collect();
+
+        // Don't start the initial sync at the tip itself: recent blocks can still be
+        // reorged out and reverse sync never revisits them. Start REORG_SAFETY_DEPTH
+        // blocks back; forward sync fetches the rest once the initial sync is done.
+        if reverse && start_from_tip {
+            while let Some(mut conn) = pool.pop_front() {
+                let req_id = eth::next_request_id();
+                let msg = eth::create_get_block_headers_message(
+                    &current_hash,
+                    REORG_SAFETY_DEPTH + 1,
+                    0,
+                    true,
+                    req_id,
+                );
+                let Some(body) = conn.request(msg, BLOCK_HEADERS_CODE, req_id).await else {
+                    continue;
+                };
+                let headers = eth::parse_block_headers(&body);
+                if headers.is_empty() {
+                    warn!("Peer returned no headers for the tip, trying next peer");
+                    continue;
+                }
+                if let Err(e) = verify::verify_header_chain(
+                    &headers,
+                    &current_hash,
+                    true,
+                    REORG_SAFETY_DEPTH + 1,
+                ) {
+                    warn!("Invalid tip headers from peer, dropping connection: {}", e);
+                    continue;
+                }
+                let start = headers.last().unwrap();
+                info!(
+                    "Starting initial sync {} blocks behind the tip, at block n° {} ({})",
+                    headers.len() - 1,
+                    start.number,
+                    hex::encode(&start.hash)
+                );
+                current_hash = start.hash.clone();
+                pool.push_front(conn);
+                break;
+            }
+        }
 
         if reverse {
             // Reverse sync (tip → genesis): pipeline header requests across
@@ -529,10 +607,21 @@ fn main() {
                     info!("Retrying batch of {} headers on new connection", headers.len());
                     headers
                 } else {
-                    info!("Sending GetBlockHeaders (starting {})", hex::encode(&current_hash));
+                    // Make sure everything sent so far is saved before asking for more:
+                    // a rollback must not race the DB thread saving the block it deletes.
+                    if !wait_for_db(&last_confirmed, current_number).await {
+                        error!("Database thread did not save block n° {} in time, stopping.", current_number);
+                        break 'outer;
+                    }
+
+                    // Ask by number for the blocks after ours, then check the first one
+                    // builds on our block. Asking by hash would hide a re-org: peers
+                    // answer a non-canonical hash with that header alone.
+                    let next_number = current_number + 1;
+                    info!("Sending GetBlockHeaders (starting n° {})", next_number);
                     let req_id = eth::next_request_id();
                     let get_headers = eth::create_get_block_headers_message(
-                        &current_hash,
+                        &next_number,
                         BLOCK_NUM,
                         0,
                         false,
@@ -547,12 +636,43 @@ fn main() {
 
                     let headers = eth::parse_block_headers(&headers_body);
 
-                    // Empty response means the peer doesn't recognise current_hash
-                    // as canonical — assume re-org and roll back one block.
+                    // Empty response: the peer has no block after ours yet.
                     if headers.is_empty() {
                         pool.push_back(conn);
+                        if pool.len() == 1 {
+                            warn!("No new block headers and no other peers to try, stopping.");
+                            break 'outer;
+                        }
+                        warn!("No new block headers, waiting...");
+                        tokio::time::sleep(Duration::from_secs(15)).await;
+                        continue;
+                    }
+
+                    let first = &headers[0];
+                    let first_hash = first.hash.clone();
+                    if first.number != next_number {
                         warn!(
-                            "Peer has no blocks after {} — assuming re-org, rolling back one block.",
+                            "Peer answered with block n° {} instead of n° {}, dropping connection",
+                            first.number, next_number
+                        );
+                        continue;
+                    }
+                    if let Err(e) =
+                        verify::verify_header_chain(&headers, &first_hash, false, BLOCK_NUM)
+                    {
+                        // Drop the peer; the same request goes to the next connection.
+                        warn!("Invalid block headers from peer, dropping connection: {}", e);
+                        continue;
+                    }
+
+                    // The next block doesn't build on ours: our block was re-orged out.
+                    // Roll it back and try again from its parent; deeper re-orgs repeat this.
+                    if first.parent_hash != current_hash {
+                        pool.push_back(conn);
+                        warn!(
+                            "Re-org detected: block n° {} has parent {} but we have {}. Rolling back one block.",
+                            next_number,
+                            hex::encode(&headers[0].parent_hash),
                             hex::encode(&current_hash)
                         );
                         let schema = network.to_string();
@@ -579,21 +699,24 @@ fn main() {
                                     reorg_pg_client.execute(&stmt, &[&current_hash]).await.unwrap();
                                 }
                                 warn!(
-                                    "Rolled back block {}. Resuming from parent {}.",
+                                    "Rolled back block n° {} ({}). Resuming from parent {}.",
+                                    current_number,
                                     hex::encode(&current_hash),
                                     hex::encode(&parent_hash)
                                 );
                                 current_hash = parent_hash;
+                                current_number -= 1;
                             }
                             Ok(None) => {
                                 warn!("Block {} not found in DB during re-org rollback, resetting to max known block.", hex::encode(&current_hash));
                                 match reorg_pg_client.query_opt(
-                                    &format!("SELECT hash FROM {}.blocks WHERE number = (SELECT MAX(number) FROM {}.blocks);", schema, schema),
+                                    &format!("SELECT hash, number FROM {}.blocks WHERE number = (SELECT MAX(number) FROM {}.blocks);", schema, schema),
                                     &[],
                                 ).await {
                                     Ok(Some(row)) => {
                                         current_hash = row.get(0);
-                                        warn!("Resuming from max known block: {}", hex::encode(&current_hash));
+                                        current_number = row.get::<_, i32>(1) as u32;
+                                        warn!("Resuming from max known block n° {}: {}", current_number, hex::encode(&current_hash));
                                     }
                                     _ => {
                                         warn!("No known blocks in DB, stopping forward sync.");
@@ -603,62 +726,18 @@ fn main() {
                             }
                             Err(e) => {
                                 warn!("Re-org rollback query failed: {}", e);
+                                continue;
                             }
                         }
+                        // Tell the DB thread the next batch starts right after the new position.
+                        *last_confirmed.lock().unwrap() =
+                            Some((current_number, current_hash.clone()));
                         continue;
                     }
 
-                    if let Err(e) =
-                        verify::verify_header_chain(&headers, &current_hash, false, BLOCK_NUM)
-                    {
-                        // Drop the peer; the same request goes to the next connection.
-                        warn!("Invalid block headers from peer, dropping connection: {}", e);
-                        continue;
-                    }
-
-                    // Skip the first header: it's current_hash, already in the DB.
-                    let new_headers: Vec<Block> = headers.into_iter().skip(1).collect();
-                    if new_headers.is_empty() {
-                        pool.push_back(conn);
-                        if pool.len() == 1 {
-                            warn!("No new block headers and no other peers to try, stopping.");
-                            break 'outer;
-                        }
-                        warn!("No new block headers, waiting...");
-                        tokio::time::sleep(Duration::from_secs(15)).await;
-                        continue;
-                    }
-
-                    // Detect gap: if we're fetching blocks that are ahead of what the DB
-                    // has actually saved, a prior batch was lost (dropped connection, failed
-                    // retry, etc.). Reset current_hash to the last confirmed save so the
-                    // missing blocks are re-fetched.
-                    let reset_to = {
-                        let guard = last_confirmed.lock().unwrap();
-                        if let Some((confirmed_num, ref confirmed_hash)) = *guard {
-                            let new_first = new_headers.first().unwrap().number;
-                            if new_first > confirmed_num + 1 {
-                                Some((confirmed_num, confirmed_hash.clone()))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    };
-                    if let Some((confirmed_num, confirmed_hash)) = reset_to {
-                        warn!(
-                            "Gap detected: next block is {} but DB last confirmed {}. Resetting current_hash.",
-                            new_headers.first().unwrap().number,
-                            confirmed_num
-                        );
-                        current_hash = confirmed_hash;
-                        pool.push_back(conn);
-                        continue 'outer;
-                    }
-
-                    current_hash = new_headers.last().unwrap().hash.to_vec();
-                    new_headers
+                    current_hash = headers.last().unwrap().hash.to_vec();
+                    current_number = headers.last().unwrap().number;
+                    headers
                 };
 
                 let hashes: Vec<Vec<u8>> =
