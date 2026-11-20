@@ -380,7 +380,7 @@ pub async fn read_message(
     Ok(parse_body(&body, ingress_mac, ingress_aes, next_size))
 }
 
-pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u32) -> Vec<u8> {
+pub fn calculate_tx_addr(sender: &Vec<u8>, nonce: &u64) -> Vec<u8> {
     let mut rlp_encoded = RlpStream::new();
     rlp_encoded.begin_unbounded_list();
     rlp_encoded.append(sender);
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn calculate_tx() {
         let sender: Vec<u8> = hex::decode("bcB8DA04C3A6A6E92da829C305ba523e0ba3e804").unwrap();
-        let nonce: u32 = 0;
+        let nonce: u64 = 0;
         let contract_address = calculate_tx_addr(&sender, &nonce);
         assert_eq!(
             hex::encode(contract_address),

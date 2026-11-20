@@ -27,7 +27,7 @@ pub struct Authorization {
     pub chain_id: Vec<u8>, // Some asshole created a transaction with 1407996450619573357857283148491789578994728514355 as a chain ID. WHY ?
     #[serde(with = "hex::serde")]
     pub address: Vec<u8>,
-    pub nonce: u32,
+    pub nonce: u64,
     pub y_parity: u64,
     #[serde(with = "hex::serde")]
     pub r: Vec<u8>,
@@ -38,16 +38,16 @@ pub struct Authorization {
 #[derive(Clone, Debug)]
 pub struct Transaction {
     pub chain_id: Option<u64>,
-    pub nonce: u32,
+    pub nonce: u64,
     pub gas_price: Option<BigUint>, // Only present in legacy and type1 transactions
-    pub max_priority_fee_per_gas: Option<u64>, // Introduce in type 2 transactions
-    pub max_fee_per_gas: Option<u64>, // Introduce in type 2 transactions
+    pub max_priority_fee_per_gas: Option<BigUint>, // Introduce in type 2 transactions
+    pub max_fee_per_gas: Option<BigUint>, // Introduce in type 2 transactions
     pub gas_limit: u64,
     pub to: Vec<u8>,
     pub value: BigUint,
     pub data: Vec<u8>,
     pub access_list: Option<AccessList>, // Introduce in type 2 transactions
-    pub max_fee_per_blob_gas: Option<u64>, // Introduce in type 3 transactions
+    pub max_fee_per_blob_gas: Option<BigUint>, // Introduce in type 3 transactions
     pub blob_versioned_hashes: Option<Vec<Hash>>, // Introduce in type 3 transactions
     pub authorization_list: Option<AuthorizationList>, // Introduce in type 4 transactions
     pub v: u64,
@@ -73,9 +73,9 @@ pub struct Block {
     pub bloom: Vec<u8>,
     pub difficulty: u64,
     pub number: u32,
-    pub gas_limit: u32,
-    pub gas_used: u32,
-    pub time: u32,
+    pub gas_limit: u64,
+    pub gas_used: u64,
+    pub time: u64,
     pub extradata: Vec<u8>,
     pub mix_digest: Vec<u8>,
     pub block_nonce: Vec<u8>,

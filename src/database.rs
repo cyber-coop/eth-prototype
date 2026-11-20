@@ -20,9 +20,9 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         bloom BYTEA NOT NULL,
         difficulty BIGINT NOT NULL,
         number INTEGER NOT NULL,
-        gas_limit INTEGER NOT NULL,
-        gas_used INTEGER NOT NULL,
-        time INTEGER NOT NULL,
+        gas_limit BIGINT NOT NULL,
+        gas_used BIGINT NOT NULL,
+        time BIGINT NOT NULL,
         extradata BYTEA NOT NULL,
         mix_digest BYTEA NOT NULL,
         block_nonce BYTEA NOT NULL,
@@ -35,17 +35,17 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         tx_type SMALLINT NOT NULL,
         block BYTEA NOT NULL,
         chain_id BIGINT,
-        nonce INTEGER NOT NULL,
+        nonce BIGINT NOT NULL,
         gas_price NUMERIC(78),
-        max_priority_fee_per_gas BIGINT,
-        max_fee_per_gas BIGINT,
+        max_priority_fee_per_gas NUMERIC(78),
+        max_fee_per_gas NUMERIC(78),
         gas_limit BIGINT NOT NULL,
         fromaddress BYTEA NOT NULL,
         toaddress BYTEA NOT NULL,
         value NUMERIC(78) NOT NULL,
         data BYTEA NOT NULL,
         access_list JSONB,
-        max_fee_per_blob_gas BIGINT,
+        max_fee_per_blob_gas NUMERIC(78),
         blob_versioned_hashes JSONB,
         authorization_list JSONB,
         v BIGINT NOT NULL,
@@ -66,9 +66,9 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
         bloom BYTEA NOT NULL,
         difficulty BIGINT NOT NULL,
         number INTEGER NOT NULL,
-        gas_limit INTEGER NOT NULL,
-        gas_used INTEGER NOT NULL,
-        time INTEGER NOT NULL,
+        gas_limit BIGINT NOT NULL,
+        gas_used BIGINT NOT NULL,
+        time BIGINT NOT NULL,
         extradata BYTEA NOT NULL,
         mix_digest BYTEA NOT NULL,
         block_nonce BYTEA NOT NULL,
@@ -159,12 +159,12 @@ pub fn save_blocks(
                     } else {
                         "null".to_string()
                     },
-                    if let Some(max_priority_fee_per_gas) = t.max_priority_fee_per_gas {
+                    if let Some(max_priority_fee_per_gas) = &t.max_priority_fee_per_gas {
                         max_priority_fee_per_gas.to_string()
                     } else {
                         "null".to_string()
                     },
-                    if let Some(max_fee_per_gas) = t.max_fee_per_gas {
+                    if let Some(max_fee_per_gas) = &t.max_fee_per_gas {
                         max_fee_per_gas.to_string()
                     } else {
                         "null".to_string()
@@ -175,7 +175,7 @@ pub fn save_blocks(
                     t.value.to_string(),
                     hex::encode(&t.data),
                     serde_json::to_string(&t.access_list).unwrap(),
-                    if let Some(max_fee_per_blob_gas) = t.max_fee_per_blob_gas {
+                    if let Some(max_fee_per_blob_gas) = &t.max_fee_per_blob_gas {
                         max_fee_per_blob_gas.to_string()
                     } else {
                         "null".to_string()

@@ -29,7 +29,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
         hasher.update(&transaction.as_raw());
         let txid = hasher.finalize().to_vec();
 
-        let nonce: u32 = transaction.at(0).unwrap().as_val().unwrap();
+        let nonce: u64 = transaction.at(0).unwrap().as_val().unwrap();
         // NOTE: there is a transaction in Ropsten where gas_price is bigger than u64
         let gas_price: Vec<u8> = transaction.at(1).unwrap().as_val().unwrap();
         let gas_limit: u64 = transaction.at(2).unwrap().as_val().unwrap();
@@ -109,7 +109,7 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
     match eip_tx[0] {
         1 => {
             let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
-            let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
+            let nonce: u64 = t.at(1).unwrap().as_val().unwrap();
             let gas_price: Vec<u8> = t.at(2).unwrap().as_val().unwrap();
             let gas_limit: u64 = t.at(3).unwrap().as_val().unwrap();
             let to: Vec<u8> = t.at(4).unwrap().as_val().unwrap();
@@ -199,9 +199,11 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
         }
         2 => {
             let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
-            let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
-            let max_priority_fee_per_gas: u64 = t.at(2).unwrap().as_val().unwrap();
-            let max_fee_per_gas: u64 = t.at(3).unwrap().as_val().unwrap();
+            let nonce: u64 = t.at(1).unwrap().as_val().unwrap();
+            let max_priority_fee_per_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(2).unwrap().as_val::<Vec<u8>>().unwrap());
+            let max_fee_per_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(3).unwrap().as_val::<Vec<u8>>().unwrap());
             let gas_limit: u64 = t.at(4).unwrap().as_val().unwrap();
             let to: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
             let value: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
@@ -291,9 +293,11 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
         }
         3 => {
             let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
-            let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
-            let max_priority_fee_per_gas: u64 = t.at(2).unwrap().as_val().unwrap();
-            let max_fee_per_gas: u64 = t.at(3).unwrap().as_val().unwrap();
+            let nonce: u64 = t.at(1).unwrap().as_val().unwrap();
+            let max_priority_fee_per_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(2).unwrap().as_val::<Vec<u8>>().unwrap());
+            let max_fee_per_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(3).unwrap().as_val::<Vec<u8>>().unwrap());
             let gas_limit: u64 = t.at(4).unwrap().as_val().unwrap();
             let to: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
             let value: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
@@ -318,7 +322,9 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
                 access_list.0.push((Hash(key), list));
             }
             assert_eq!(access_list.0.len(), tmp.item_count().unwrap());
-            let max_fee_per_blob_gas: u64 = t.at(9).unwrap().as_val().unwrap(); // This is UINT256 https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L42 but putting u64 for now. Hoping it doesn't overflow.
+            // UINT256: https://github.com/ethereum/go-ethereum/blob/master/core/types/tx_blob.go#L42
+            let max_fee_per_blob_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(9).unwrap().as_val::<Vec<u8>>().unwrap());
             let blob_versioned_hashes: Vec<Hash> = t
                 .at(10)
                 .unwrap()
@@ -399,9 +405,11 @@ pub fn parse_transaction(payload: Vec<u8>) -> Option<Transaction> {
         }
         4 => {
             let chain_id: u64 = t.at(0).unwrap().as_val().unwrap();
-            let nonce: u32 = t.at(1).unwrap().as_val().unwrap();
-            let max_priority_fee_per_gas: u64 = t.at(2).unwrap().as_val().unwrap();
-            let max_fee_per_gas: u64 = t.at(3).unwrap().as_val().unwrap();
+            let nonce: u64 = t.at(1).unwrap().as_val().unwrap();
+            let max_priority_fee_per_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(2).unwrap().as_val::<Vec<u8>>().unwrap());
+            let max_fee_per_gas: BigUint =
+                BigUint::from_bytes_be(&t.at(3).unwrap().as_val::<Vec<u8>>().unwrap());
             let gas_limit: u64 = t.at(4).unwrap().as_val().unwrap();
             let to: Vec<u8> = t.at(5).unwrap().as_val().unwrap();
             let value: Vec<u8> = t.at(6).unwrap().as_val().unwrap();
