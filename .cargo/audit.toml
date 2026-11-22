@@ -1,8 +1,11 @@
 # For more information, see https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
 
 [advisories]
-ignore = ["RUSTSEC-2024-0332", "RUSTSEC-2024-0421", "RUSTSEC-2024-0421", "RUSTSEC-2024-0357", "RUSTSEC-2025-0022", "RUSTSEC-2025-0004", 
-] # ignore dev deps warnings. We just use it for tests
+ignore = [
+    "RUSTSEC-2024-0421", # idna 0.4: dev-only, via web3 (no newer web3)
+    "RUSTSEC-2026-0258", # h2 0.3: dev-only, via web3/hyper 0.14 (fixed only in h2 0.4)
+    "RUSTSEC-2026-0387", # crypto-bigint 0.5 timing: via k256 0.13, fix needs k256 0.14
+]
 informational_warnings = ["unmaintained"]
 severity_threshold = "high"
 
