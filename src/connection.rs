@@ -277,9 +277,11 @@ impl Connection {
         let their_blockhash: Vec<u8>;
         if version == 69 {
             let their_status = if network == networks::Network::POLYGON_MAINNET {
-                eth::parse_eth69_status_message_polygon(uncrypted_body[1..].to_vec()).unwrap()
+                eth::parse_eth69_status_message_polygon(uncrypted_body[1..].to_vec())
+                    .ok_or("Invalid STATUS message")?
             } else {
-                eth::parse_eth69_status_message(uncrypted_body[1..].to_vec()).unwrap()
+                eth::parse_eth69_status_message(uncrypted_body[1..].to_vec())
+                    .ok_or("Invalid STATUS message")?
             };
 
             check_same_network(
@@ -291,7 +293,8 @@ impl Connection {
 
             their_blockhash = their_status.latest_hash;
         } else {
-            let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
+            let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec())
+                .ok_or("Invalid STATUS message")?;
 
             check_same_network(
                 &network,

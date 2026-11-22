@@ -43,26 +43,30 @@ pub fn create_status_message(status: Status) -> Vec<u8> {
 
 pub fn parse_status_message(payload: Vec<u8>) -> Option<Status> {
     let mut dec = snap::raw::Decoder::new();
-    let message = dec.decompress_vec(&payload).unwrap();
+    let message = dec.decompress_vec(&payload).ok()?;
 
     let r = rlp::Rlp::new(&message);
-    assert!(r.is_list());
+    if !r.is_list() {
+        return None;
+    }
 
     if r.is_empty() {
         return None;
     }
 
-    let version: u32 = r.at(0).unwrap().as_val().unwrap();
-    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
-    let td: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
-    let blockhash: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
-    let genesis: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
+    let version: u32 = r.at(0).ok()?.as_val().ok()?;
+    let network_id: u64 = r.at(1).ok()?.as_val().ok()?;
+    let td: Vec<u8> = r.at(2).ok()?.as_val().ok()?;
+    let blockhash: Vec<u8> = r.at(3).ok()?.as_val().ok()?;
+    let genesis: Vec<u8> = r.at(4).ok()?.as_val().ok()?;
 
     // get forkid info
-    let forkidrlp = r.at(5).unwrap();
-    assert!(forkidrlp.is_list());
-    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
-    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+    let forkidrlp = r.at(5).ok()?;
+    if !forkidrlp.is_list() {
+        return None;
+    }
+    let fork_hash: Vec<u8> = forkidrlp.at(0).ok()?.as_val().ok()?;
+    let fork_next: u64 = forkidrlp.at(1).ok()?.as_val().ok()?;
 
     let status = Status {
         version,
@@ -89,27 +93,31 @@ pub struct Status69 {
 
 pub fn parse_eth69_status_message(payload: Vec<u8>) -> Option<Status69> {
     let mut dec = snap::raw::Decoder::new();
-    let message = dec.decompress_vec(&payload).unwrap();
+    let message = dec.decompress_vec(&payload).ok()?;
 
     let r = rlp::Rlp::new(&message);
-    assert!(r.is_list());
+    if !r.is_list() {
+        return None;
+    }
 
     if r.is_empty() {
         return None;
     }
 
-    let version: u32 = r.at(0).unwrap().as_val().unwrap();
-    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
-    let genesis: Vec<u8> = r.at(2).unwrap().as_val().unwrap();
+    let version: u32 = r.at(0).ok()?.as_val().ok()?;
+    let network_id: u64 = r.at(1).ok()?.as_val().ok()?;
+    let genesis: Vec<u8> = r.at(2).ok()?.as_val().ok()?;
     // get forkid info
-    let forkidrlp = r.at(3).unwrap();
-    assert!(forkidrlp.is_list());
-    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
-    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+    let forkidrlp = r.at(3).ok()?;
+    if !forkidrlp.is_list() {
+        return None;
+    }
+    let fork_hash: Vec<u8> = forkidrlp.at(0).ok()?.as_val().ok()?;
+    let fork_next: u64 = forkidrlp.at(1).ok()?.as_val().ok()?;
 
-    let earliest: u32 = r.at(4).unwrap().as_val().unwrap();
-    let latest: u32 = r.at(5).unwrap().as_val().unwrap();
-    let latest_hash: Vec<u8> = r.at(6).unwrap().as_val().unwrap();
+    let earliest: u32 = r.at(4).ok()?.as_val().ok()?;
+    let latest: u32 = r.at(5).ok()?.as_val().ok()?;
+    let latest_hash: Vec<u8> = r.at(6).ok()?.as_val().ok()?;
 
     let status = Status69 {
         version,
@@ -154,27 +162,31 @@ pub fn create_eth69_status_message(status: Status69) -> Vec<u8> {
 // (see https://github.com/0xPolygon/bor/blob/develop/eth/protocols/eth/handshake.go)
 pub fn parse_eth69_status_message_polygon(payload: Vec<u8>) -> Option<Status69> {
     let mut dec = snap::raw::Decoder::new();
-    let message = dec.decompress_vec(&payload).unwrap();
+    let message = dec.decompress_vec(&payload).ok()?;
 
     let r = rlp::Rlp::new(&message);
-    assert!(r.is_list());
+    if !r.is_list() {
+        return None;
+    }
 
     if r.is_empty() {
         return None;
     }
 
-    let version: u32 = r.at(0).unwrap().as_val().unwrap();
-    let network_id: u64 = r.at(1).unwrap().as_val().unwrap();
+    let version: u32 = r.at(0).ok()?.as_val().ok()?;
+    let network_id: u64 = r.at(1).ok()?.as_val().ok()?;
     // index 2 is td, which we don't track in Status69
-    let genesis: Vec<u8> = r.at(3).unwrap().as_val().unwrap();
-    let forkidrlp = r.at(4).unwrap();
-    assert!(forkidrlp.is_list());
-    let fork_hash: Vec<u8> = forkidrlp.at(0).unwrap().as_val().unwrap();
-    let fork_next: u64 = forkidrlp.at(1).unwrap().as_val().unwrap();
+    let genesis: Vec<u8> = r.at(3).ok()?.as_val().ok()?;
+    let forkidrlp = r.at(4).ok()?;
+    if !forkidrlp.is_list() {
+        return None;
+    }
+    let fork_hash: Vec<u8> = forkidrlp.at(0).ok()?.as_val().ok()?;
+    let fork_next: u64 = forkidrlp.at(1).ok()?.as_val().ok()?;
 
-    let earliest: u32 = r.at(5).unwrap().as_val().unwrap();
-    let latest: u32 = r.at(6).unwrap().as_val().unwrap();
-    let latest_hash: Vec<u8> = r.at(7).unwrap().as_val().unwrap();
+    let earliest: u32 = r.at(5).ok()?.as_val().ok()?;
+    let latest: u32 = r.at(6).ok()?.as_val().ok()?;
+    let latest_hash: Vec<u8> = r.at(7).ok()?.as_val().ok()?;
 
     let status = Status69 {
         version,
