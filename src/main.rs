@@ -58,7 +58,7 @@ async fn fetch_batch(conn: &mut Connection, headers: &[Block]) -> Option<Vec<Blo
             warn!("GetBlockBodies failed, will retry batch");
             return None;
         };
-        let bodies = eth::parse_block_bodies(&body);
+        let bodies = parse_peer_message("block bodies", || eth::parse_block_bodies(&body))?;
         if bodies.is_empty() {
             warn!("Peer returned no block bodies, will retry batch");
             return None;
@@ -83,7 +83,7 @@ async fn fetch_batch(conn: &mut Connection, headers: &[Block]) -> Option<Vec<Blo
                 warn!("GetReceipts failed, will retry batch");
                 return None;
             };
-            let batch_receipts = eth::parse_receipts(&body);
+            let batch_receipts = parse_peer_message("receipts", || eth::parse_receipts(&body))?;
             if batch_receipts.is_empty() {
                 warn!("Peer returned no receipts, will retry batch");
                 return None;
@@ -117,17 +117,21 @@ async fn fetch_batch(conn: &mut Connection, headers: &[Block]) -> Option<Vec<Blo
     )
 }
 
-/// Parses a `BlockHeaders` response from a peer. The parser panics on malformed
-/// data; this runs in the sync loop itself, where a panic would stop the whole
-/// process, so it is caught and `None` returned. Callers drop the peer.
-fn parse_headers(payload: &[u8]) -> Option<Vec<Block>> {
-    match std::panic::catch_unwind(|| eth::parse_block_headers(payload)) {
-        Ok(headers) => Some(headers),
+/// Runs a peer message parser. The parsers panic on malformed data; this runs
+/// in the sync loop itself, where a panic would stop the whole process, so it
+/// is caught and `None` returned. Callers drop or retry the peer.
+fn parse_peer_message<T>(what: &str, parse: impl FnOnce() -> T) -> Option<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(parse)) {
+        Ok(v) => Some(v),
         Err(_) => {
-            warn!("Malformed block headers from peer, dropping connection");
+            warn!("Malformed {} from peer", what);
             None
         }
     }
+}
+
+fn parse_headers(payload: &[u8]) -> Option<Vec<Block>> {
+    parse_peer_message("block headers", || eth::parse_block_headers(payload))
 }
 
 /// Connects to Postgres, retrying every 20 seconds until it succeeds.
