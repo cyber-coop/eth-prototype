@@ -12,7 +12,7 @@ use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
 use eth_prototype::{configs, database, networks, utils, verify};
 
 #[macro_use]
-extern crate log;
+extern crate tracing;
 
 // max value seems to be 1024 (https://github.com/ethereum/go-ethereum/blob/master/eth/protocols/eth/handler.go#L40)
 const BLOCK_NUM: usize = 1024;
@@ -173,7 +173,11 @@ async fn wait_for_db<T>(
 
 fn main() {
     // Init log
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+        .init();
 
     info!("Ethereum mini node in rust");
 

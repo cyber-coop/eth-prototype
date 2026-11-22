@@ -10,4 +10,4 @@ pub mod utils;
 pub mod verify;
 
 #[macro_use]
-extern crate log;
+extern crate tracing;

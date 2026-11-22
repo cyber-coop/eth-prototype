@@ -3,9 +3,9 @@ use devp2p::{ecies::ECIES, util::pk2id};
 use eth_prototype::database;
 use eth_prototype::types;
 use eth_prototype::{mac, message, utils};
-use log::info;
 use secp256k1_20::{PublicKey, SECP256K1, SecretKey};
 use sha3::{Digest, Keccak256};
+use tracing::info;
 
 #[test]
 fn communicate() {
