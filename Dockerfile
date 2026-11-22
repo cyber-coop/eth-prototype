@@ -5,8 +5,9 @@ WORKDIR /usr/src/eth-prototype
 
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/src/eth-prototype/target \
-    cargo install --path .
+    cargo install --locked --path .
 
 ##### RUNNER #####
 FROM debian:trixie-slim

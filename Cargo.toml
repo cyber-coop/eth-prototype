@@ -48,6 +48,6 @@ web3 = "0.19.0"
 opt-level = 3        # maximum compiler optimizations
 lto = "thin"         # cross-crate link-time optimization (good balance of speed vs compile time)
 codegen-units = 1    # single codegen unit for better optimization at the cost of compile time
-debug = true         # keep debug symbols for readable stack traces
+debug = "line-tables-only"  # file:line in backtraces without full debug info
 strip = "none"       # do not strip anything from the binary
 panic = "unwind"     # keep stack unwinding on panic
