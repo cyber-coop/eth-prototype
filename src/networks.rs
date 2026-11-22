@@ -83,7 +83,9 @@ impl Network {
             24, 208, 144, 106, 52, 230, 154, 236, 140, 13, 177, 203, 143, 163,
         ],
         head_td: 0,
-        fork_id: [0xcba2a1c0, 0],
+        // Frontier hash + Homestead block: every mainnet node accepts it as a peer
+        // still syncing, so it keeps working across hard forks (same as Puddle).
+        fork_id: [0xfc64ec04, 1150000],
         network_id: 1,
     };
 
@@ -94,7 +96,8 @@ impl Network {
             147, 203, 102, 93, 182, 42, 47, 59, 2, 210, 213, 123, 91,
         ],
         head_td: 585970,
-        fork_id: [0x098d24ac, 1705996800],
+        // Fork id reported by most live BSC peers (2026-09-22, from Puddle).
+        fork_id: [0xd38cc282, 0],
         network_id: 0x38,
     };
 

@@ -25,6 +25,35 @@ pub const BLOCK_HEADERS_CODE: u8 = 0x04;
 pub const BLOCK_BODIES_CODE: u8 = 0x06;
 pub const RECEIPTS_CODE: u8 = 0x10;
 
+/// Checks a peer's STATUS is for our network: same network id and genesis.
+///
+/// The fork hash is not checked: it changes at every hard fork, so pinning one
+/// value rejects every peer as soon as the network upgrades. Peers on another
+/// chain are still caught by the genesis check.
+fn check_same_network(
+    network: &networks::Network,
+    network_id: u64,
+    genesis: &[u8],
+    fork_id: &(Vec<u8>, u64),
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
+    if network_id != network.network_id || genesis != network.genesis_hash {
+        warn!(
+            "Wrong network: network id {} genesis {} (expected {} and {})",
+            network_id,
+            hex::encode(genesis),
+            network.network_id,
+            hex::encode(network.genesis_hash)
+        );
+        return Err("Wrong network".into());
+    }
+    debug!(
+        "Peer fork id: {} next {}",
+        hex::encode(&fork_id.0),
+        fork_id.1
+    );
+    Ok(())
+}
+
 pub struct Connection {
     pub handle: JoinHandle<()>,
     pub rx_tcp: Receiver<Vec<u8>>,
@@ -201,7 +230,10 @@ impl Connection {
                 version,
                 network_id: network.network_id,
                 genesis: network.genesis_hash.to_vec(),
-                fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
+                fork_id: (
+                    network.fork_id[0].to_be_bytes().to_vec(),
+                    network.fork_id[1] as u64,
+                ),
                 earliest: 0,
                 latest: 0,
                 latest_hash: network.genesis_hash.to_vec(),
@@ -224,7 +256,10 @@ impl Connection {
                     .collect(), // Maybe I should just have change the status type. But this is needed for now to remove the zeroes at the begining
                 blockhash: network.genesis_hash.to_vec(),
                 genesis: network.genesis_hash.to_vec(),
-                fork_id: (network.fork_id[0].to_be_bytes().to_vec(), 0),
+                fork_id: (
+                    network.fork_id[0].to_be_bytes().to_vec(),
+                    network.fork_id[1] as u64,
+                ),
             };
             payload = eth::create_status_message(status);
         }
@@ -247,27 +282,23 @@ impl Connection {
                 eth::parse_eth69_status_message(uncrypted_body[1..].to_vec()).unwrap()
             };
 
-            if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
-                warn!(
-                    "Wrong Fork ID. Expected {} but got {}",
-                    hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
-                    hex::encode(their_status.fork_id.0)
-                );
-                return Err("Incompatible fork".into());
-            }
+            check_same_network(
+                &network,
+                their_status.network_id,
+                &their_status.genesis,
+                &their_status.fork_id,
+            )?;
 
             their_blockhash = their_status.latest_hash;
         } else {
             let their_status = eth::parse_status_message(uncrypted_body[1..].to_vec()).unwrap();
 
-            if their_status.fork_id.0 != network.fork_id[0].to_be_bytes().to_vec() {
-                warn!(
-                    "Wrong Fork ID. Expected {} but got {}",
-                    hex::encode(network.fork_id[0].to_be_bytes().to_vec()),
-                    hex::encode(their_status.fork_id.0)
-                );
-                return Err("Incompatible fork".into());
-            }
+            check_same_network(
+                &network,
+                their_status.network_id,
+                &their_status.genesis,
+                &their_status.fork_id,
+            )?;
 
             their_blockhash = their_status.blockhash;
         }
