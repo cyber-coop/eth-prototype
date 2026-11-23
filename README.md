@@ -57,9 +57,11 @@ remote_id = "0000000000000000000000000000000000000000000000000000000000000000000
 
 ### Finding peers to connect with
 
-Peers are found automatically through the network's DNS tree ([EIP-1459](https://eips.ethereum.org/EIPS/eip-1459)), for example `all.mainnet.ethdisco.net`. The node connects to up to 50 of them.
+Peers are found automatically, for as long as the node runs, through the network's DNS tree ([EIP-1459](https://eips.ethereum.org/EIPS/eip-1459)), for example `all.mainnet.ethdisco.net`, and through discv4 (UDP port 30303). The node keeps up to 50 peers connected and replaces the ones it drops.
 
-You can still list peers in `config.toml`; they are tried first. Networks without a DNS tree (BSC, Base) need them. You can grab some in this [database](https://cyber.coop/network_id/1).
+Most public nodes are full and refuse new peers, so expect only a few peers at first; the count grows as the node keeps retrying.
+
+You can still list peers in `config.toml`; they are tried first. Base has neither a DNS tree nor discv4 bootnodes, so it needs them. You can grab some in this [database](https://cyber.coop/network_id/1).
 
 ### Configuration on local/Docker
 

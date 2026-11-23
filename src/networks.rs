@@ -13,6 +13,8 @@ pub struct Network {
     pub accepted_fork_hashes: &'static [u32],
     /// EIP-1459 DNS tree listing peers for this network, if one is published.
     pub dns_tree: Option<&'static str>,
+    /// discv4 bootnodes. Empty disables discv4 for this network.
+    pub bootnodes: &'static [&'static str],
 }
 
 impl Network {
@@ -27,6 +29,7 @@ impl Network {
         network_id: 0x03,
         accepted_fork_hashes: &[],
         dns_tree: None,
+        bootnodes: &[],
     };
 
     // Ethereum Rinkeby
@@ -40,6 +43,7 @@ impl Network {
         network_id: 0x04,
         accepted_fork_hashes: &[],
         dns_tree: None,
+        bootnodes: &[],
     };
 
     // Ethereum Goerli
@@ -53,6 +57,7 @@ impl Network {
         network_id: 0x05,
         accepted_fork_hashes: &[],
         dns_tree: None,
+        bootnodes: &[],
     };
 
     // Ethereum Sepolia
@@ -66,6 +71,7 @@ impl Network {
         network_id: 0xaa36a7,
         accepted_fork_hashes: &[],
         dns_tree: Some("all.sepolia.ethdisco.net"),
+        bootnodes: &[],
     };
 
     // Ethereum Holesky
@@ -79,6 +85,7 @@ impl Network {
         network_id: 0x4268,
         accepted_fork_hashes: &[],
         dns_tree: Some("all.holesky.ethdisco.net"),
+        bootnodes: &[],
     };
 
     // Ethereum Hoodi
@@ -92,6 +99,7 @@ impl Network {
         network_id: 0x88bb0,
         accepted_fork_hashes: &[],
         dns_tree: Some("all.hoodi.ethdisco.net"),
+        bootnodes: &[],
     };
 
     // Ethereum Mainnet
@@ -107,6 +115,7 @@ impl Network {
         network_id: 1,
         accepted_fork_hashes: &[0x07c9462e],
         dns_tree: Some("all.mainnet.ethdisco.net"),
+        bootnodes: ETHEREUM_BOOTNODES,
     };
 
     // Binance Mainnet
@@ -121,6 +130,7 @@ impl Network {
         network_id: 0x38,
         accepted_fork_hashes: &[],
         dns_tree: None,
+        bootnodes: BINANCE_BOOTNODES,
     };
 
     // Polygon Mainnet
@@ -134,6 +144,7 @@ impl Network {
         network_id: 0x89,
         accepted_fork_hashes: &[],
         dns_tree: Some("pos.polygon-peers.io"),
+        bootnodes: POLYGON_BOOTNODES,
     };
 
     // Base Mainnet
@@ -147,6 +158,7 @@ impl Network {
         network_id: 0x2105,
         accepted_fork_hashes: &[],
         dns_tree: None,
+        bootnodes: &[],
     };
 
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
@@ -182,3 +194,26 @@ impl Network {
         .to_string()
     }
 }
+
+// Bootnode lists copied from Puddle.
+pub const BINANCE_BOOTNODES: &[&str] = &[
+    "enode://433c8bfdf53a3e2268ccb1b829e47f629793291cbddf0c76ae626da802f90532251fc558e2e0d10d6725e759088439bf1cd4714716b03a259a35d4b2e4acfa7f@52.69.102.73:30311",
+    "enode://571bee8fb902a625942f10a770ccf727ae2ba1bab2a2b64e121594a99c9437317f6166a395670a00b7d93647eacafe598b6bbcef15b40b6d1a10243865a3e80f@35.73.84.120:30311",
+    "enode://fac42fb0ba082b7d1eebded216db42161163d42e4f52c9e47716946d64468a62da4ba0b1cac0df5e8bf1e5284861d757339751c33d51dfef318be5168803d0b5@18.203.152.54:30311",
+    "enode://3063d1c9e1b824cfbb7c7b6abafa34faec6bb4e7e06941d218d760acdd7963b274278c5c3e63914bd6d1b58504c59ec5522c56f883baceb8538674b92da48a96@34.250.32.100:30311",
+    "enode://ad78c64a4ade83692488aa42e4c94084516e555d3f340d9802c2bf106a3df8868bc46eae083d2de4018f40e8d9a9952c32a0943cd68855a9bc9fd07aac982a6d@34.204.214.24:30311",
+    "enode://5db798deb67df75d073f8e2953dad283148133acb520625ea804c9c4ad09a35f13592a762d8f89056248f3889f6dcc33490c145774ea4ff2966982294909b37a@107.20.191.97:30311",
+];
+
+// Source: 0xPolygon/bor params/bootnodes.go (BorMainnetBootnodes).
+pub const POLYGON_BOOTNODES: &[&str] = &[
+    "enode://e4fb013061eba9a2c6fb0a41bbd4149f4808f0fb7e88ec55d7163f19a6f02d64d0ce5ecc81528b769ba552a7068057432d44ab5e9e42842aff5b4709aa2c3f3b@34.89.75.187:30303",
+    "enode://a49da6300403cf9b31e30502eb22c142ba4f77c9dda44990bccce9f2121c3152487ee95ee55c6b92d4cdce77845e40f59fd927da70ea91cf935b23e262236d75@34.142.43.249:30303",
+];
+
+pub const ETHEREUM_BOOTNODES: &[&str] = &[
+    "enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303", // bootnode-aws-ap-southeast-1-001
+    "enode://22a8232c3abc76a16ae9d6c3b164f98775fe226f0917b0ca871128a74a8e9630b458460865bab457221f1d448dd9791d24c4e5d88786180ac185df813a68d4de@3.209.45.79:30303", // bootnode-aws-us-east-1-001
+    "enode://2b252ab6a1d0f971d9722cb839a42cb81db019ba44c08754628ab4a823487071b5695317c8ccd085219c3a03af063495b2f1da8d18218da2d6a82981b45e6ffc@65.108.70.101:30303", // bootnode-hetzner-hel
+    "enode://4aeb4ab6c14b23e2c4cfdce879c04b0748a20d8e9b59e25ded2a08143e265c6c25936e74cbc8e641e3312ca288673d91f2f93f8e277de3cfa444ecdaaf982052@157.90.35.166:30303", // bootnode-hetzner-fsn
+];

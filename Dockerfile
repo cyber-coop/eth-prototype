@@ -19,6 +19,9 @@ COPY --from=builder /usr/local/cargo/bin/eth-prototype /usr/local/bin/eth-protot
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# discv4 (optional: publishing it lets other nodes find us)
+EXPOSE 30303/udp
+
 # default env
 ENV RUST_LOG="eth_prototype=info"
 ENV NETWORK="ethereum_mainnet"

@@ -6,6 +6,7 @@ pub mod eth;
 pub mod mac;
 pub mod message;
 pub mod networks;
+pub mod peers;
 pub mod types;
 pub mod utils;
 pub mod verify;

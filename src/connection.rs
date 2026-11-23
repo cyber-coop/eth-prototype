@@ -70,6 +70,16 @@ pub struct Connection {
     pub tx_write: tokio::sync::mpsc::Sender<Vec<u8>>,
     pub eth_protocol_version: u32,
     latest_blockhash: Vec<u8>,
+    /// Peer slot held while this connection is alive (see `peers`). Dropping the
+    /// connection frees it, so a new peer can take its place.
+    pub slot: Option<tokio::sync::OwnedSemaphorePermit>,
+}
+
+impl Drop for Connection {
+    /// Stops the reader task, which also ends the writer and closes the socket.
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
 }
 
 impl Connection {
@@ -442,6 +452,7 @@ impl Connection {
             rx_tcp,
             tx_write,
             eth_protocol_version: version,
+            slot: None,
         })
     }
 }

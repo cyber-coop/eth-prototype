@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use eth_prototype::connection::{BLOCK_BODIES_CODE, BLOCK_HEADERS_CODE, Connection, RECEIPTS_CODE};
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
-use eth_prototype::{configs, database, dns_discovery, networks, utils, verify};
+use eth_prototype::{configs, database, networks, peers, utils, verify};
 
 #[macro_use]
 extern crate tracing;
@@ -22,10 +22,10 @@ const BLOCK_NUM: usize = 1024;
 // and handles reorgs.
 const REORG_SAFETY_DEPTH: usize = 64;
 
-// Stop connecting once this many peers are connected; at most
-// CONNECT_CONCURRENCY handshakes run at the same time.
-const MAX_PEERS: usize = 50;
-const CONNECT_CONCURRENCY: usize = 100;
+// At startup, wait this long after the first peer for more to connect, so the
+// tip is picked among several peers.
+const STARTUP_PEER_WAIT: Duration = Duration::from_secs(30);
+const STARTUP_PEERS: usize = 5;
 
 // How long forward sync waits for the database thread to save a batch.
 const DB_CONFIRM_TIMEOUT: Duration = Duration::from_secs(600);
@@ -137,6 +137,20 @@ fn parse_peer_message<T>(what: &str, parse: impl FnOnce() -> T) -> Option<T> {
 
 fn parse_headers(payload: &[u8]) -> Option<Vec<Block>> {
     parse_peer_message("block headers", || eth::parse_block_headers(payload))
+}
+
+/// Moves the peers connected since the last call into the pool. When syncing
+/// with receipts, peers that are not eth69 are dropped.
+fn add_new_peers(
+    new_peers: &mut tokio::sync::mpsc::Receiver<Connection>,
+    pool: &mut VecDeque<Connection>,
+    eth69_only: bool,
+) {
+    while let Ok(conn) = new_peers.try_recv() {
+        if !eth69_only || conn.eth_protocol_version == 69 {
+            pool.push_back(conn);
+        }
+    }
 }
 
 /// Connects to Postgres, retrying every 20 seconds until it succeeds.
@@ -377,57 +391,23 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        // Peers from the config first, then the network's DNS tree in random order.
-        let mut candidates: Vec<configs::Peer> = config.peers;
-        if let Some(tree) = network.dns_tree {
-            let mut found = dns_discovery::discover_peers(tree).await;
-            secp256k1::rand::seq::SliceRandom::shuffle(
-                found.as_mut_slice(),
-                &mut secp256k1::rand::thread_rng(),
-            );
-            candidates.extend(found);
-        }
-        let mut seen = std::collections::HashSet::new();
-        candidates.retain(|p| seen.insert(p.remote_id.clone()));
-        let total = candidates.len();
-        let mut candidates = candidates.into_iter();
+        // Peers are found and connected in the background for as long as we run.
+        let mut new_peers = peers::spawn(network, config.peers);
 
+        info!("Waiting for peers...");
         let mut connections: Vec<Connection> = vec![];
-        let mut tasks = JoinSet::new();
-        let mut failed = 0;
-        loop {
-            while connections.len() < MAX_PEERS && tasks.len() < CONNECT_CONCURRENCY {
-                let Some(peer) = candidates.next() else { break };
-                tasks.spawn(async move { Connection::connect(peer, network).await });
-            }
-            let Some(result) = tasks.join_next().await else {
-                break;
-            };
-            match result {
-                Ok(Ok(connection)) => {
-                    connections.push(connection);
-                    if connections.len() >= MAX_PEERS {
-                        tasks.abort_all();
-                    }
-                }
-                Ok(Err(e)) => {
-                    debug!("Failed to connect to peer: {}", e);
-                    failed += 1;
-                }
-                Err(e) if e.is_cancelled() => {}
-                Err(e) => {
-                    warn!("Connection task panicked: {:?}", e);
-                    failed += 1;
-                }
+        let Some(first) = new_peers.recv().await else {
+            return;
+        };
+        connections.push(first);
+        let deadline = tokio::time::Instant::now() + STARTUP_PEER_WAIT;
+        while connections.len() < STARTUP_PEERS {
+            match tokio::time::timeout_at(deadline, new_peers.recv()).await {
+                Ok(Some(conn)) => connections.push(conn),
+                _ => break,
             }
         }
-
-        info!(
-            "Connected to {} peers ({} failed, {} candidates)",
-            connections.len(),
-            failed,
-            total
-        );
+        info!("Starting with {} peers", connections.len());
 
         let mut start_from_tip = false;
 
@@ -483,12 +463,14 @@ fn main() {
 
         // Receipts are only fetched over eth69. Batches are spread across all peers
         // in the pool, so mixing eth68 and eth69 peers would leave holes in the
-        // receipts table. If any eth69 peer is available, use only those.
+        // receipts table. If any eth69 peer is available, use only those (peers
+        // connecting later included).
         let eth69_count = connections
             .iter()
             .filter(|c| c.eth_protocol_version == 69)
             .count();
-        if eth69_count > 0 {
+        let eth69_only = eth69_count > 0;
+        if eth69_only {
             if eth69_count < connections.len() {
                 info!(
                     "Using only the {} eth69 peers (dropping {} older peers) so every batch has receipts",
@@ -570,6 +552,7 @@ fn main() {
                 // once every in-flight batch has completed, so a batch that fails late
                 // is still re-queued instead of being dropped.
                 let mut conn = loop {
+                    add_new_peers(&mut new_peers, &mut pool, eth69_only);
                     // `done` means no more headers to request; retries may still be pending.
                     let has_work = !retry_queue.is_empty() || !done.load(Ordering::Relaxed);
                     if has_work && body_tasks.len() < 10 {
@@ -578,15 +561,31 @@ fn main() {
                         }
                     }
                     if body_tasks.is_empty() {
-                        if has_work {
-                            warn!(
-                                "No connections left ({} batches still to retry)",
-                                retry_queue.len()
-                            );
+                        if !has_work {
+                            break 'outer;
                         }
-                        break 'outer;
+                        warn!("No peers left, waiting for new ones...");
+                        match new_peers.recv().await {
+                            Some(c) => {
+                                if !eth69_only || c.eth_protocol_version == 69 {
+                                    pool.push_back(c);
+                                }
+                                continue;
+                            }
+                            None => break 'outer,
+                        }
                     }
-                    match body_tasks.join_next().await {
+                    // Wait for a batch to finish, or a new peer when there is work left.
+                    let finished = tokio::select! {
+                        finished = body_tasks.join_next() => finished,
+                        Some(c) = new_peers.recv(), if has_work => {
+                            if !eth69_only || c.eth_protocol_version == 69 {
+                                pool.push_back(c);
+                            }
+                            continue;
+                        }
+                    };
+                    match finished {
                         Some(Ok(Ok(c))) => pool.push_back(c),
                         Some(Ok(Err(headers))) => {
                             warn!("Task failed, re-queuing batch of {} headers", headers.len());
@@ -697,11 +696,20 @@ fn main() {
             });
 
             'outer: loop {
+                add_new_peers(&mut new_peers, &mut pool, eth69_only);
                 let mut conn = match pool.pop_front() {
                     Some(c) => c,
                     None => {
-                        warn!("No connections left");
-                        break;
+                        warn!("No peers left, waiting for new ones...");
+                        match new_peers.recv().await {
+                            Some(c) => {
+                                if !eth69_only || c.eth_protocol_version == 69 {
+                                    pool.push_back(c);
+                                }
+                                continue;
+                            }
+                            None => break,
+                        }
                     }
                 };
 
@@ -743,11 +751,7 @@ fn main() {
                     // Empty response: the peer has no block after ours yet.
                     if headers.is_empty() {
                         pool.push_back(conn);
-                        if pool.len() == 1 {
-                            warn!("No new block headers and no other peers to try, stopping.");
-                            break 'outer;
-                        }
-                        warn!("No new block headers, waiting...");
+                        debug!("No new block headers, waiting...");
                         tokio::time::sleep(Duration::from_secs(15)).await;
                         continue;
                     }
