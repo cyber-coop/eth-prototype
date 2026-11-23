@@ -2,13 +2,13 @@
 //! network's DNS tree (EIP-1459) and continuous discv4 lookups; they are
 //! connected in the background and handed over on a channel, up to MAX_PEERS.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, mpsc};
 
 use crate::configs::Peer;
-use crate::connection::{Connection, Disconnected, TOO_MANY_PEERS};
+use crate::connection::{Connection, is_incompatible};
 use crate::dns_discovery;
 use crate::networks::Network;
 
@@ -16,9 +16,9 @@ use crate::networks::Network;
 /// connection is dropped by the sync, so in-flight handshakes count too.
 pub const MAX_PEERS: usize = 50;
 
-/// A peer is not tried again before this. Peers that refused us with "too many
-/// peers" are queued again after it, since their slots free up over time;
-/// others are only retried if discovery finds them again.
+/// A peer is not tried again before this. After it, a peer is retried when
+/// discovery finds it again (most refuse with "too many peers", which passes).
+/// Peers that can never be useful (see `is_incompatible`) are never retried.
 const RETRY_AFTER: Duration = Duration::from_secs(600);
 
 /// The DNS tree changes slowly.
@@ -66,12 +66,7 @@ pub fn spawn(network: Network, config_peers: Vec<Peer>) -> mpsc::Receiver<Connec
         tokio::spawn(run_discv4(network, candidate_tx.clone()));
     }
 
-    tokio::spawn(connect_candidates(
-        network,
-        candidate_rx,
-        candidate_tx,
-        conn_tx,
-    ));
+    tokio::spawn(connect_candidates(network, candidate_rx, conn_tx));
 
     conn_rx
 }
@@ -134,17 +129,21 @@ async fn run_discv4(network: Network, candidates: mpsc::Sender<Peer>) {
 }
 
 /// Connects candidates while there are free slots. Each peer is tried at most
-/// once every RETRY_AFTER.
+/// once every RETRY_AFTER, and never again once found incompatible.
 async fn connect_candidates(
     network: Network,
     mut candidates: mpsc::Receiver<Peer>,
-    retry: mpsc::Sender<Peer>,
     connections: mpsc::Sender<Connection>,
 ) {
     let slots = Arc::new(Semaphore::new(MAX_PEERS));
     let mut tried: HashMap<Vec<u8>, Instant> = HashMap::new();
+    // Node ids of peers that can never be useful (in memory, until restart).
+    let incompatible: Arc<Mutex<HashSet<Vec<u8>>>> = Arc::default();
 
     while let Some(peer) = candidates.recv().await {
+        if incompatible.lock().unwrap().contains(&peer.remote_id) {
+            continue;
+        }
         if tried
             .get(&peer.remote_id)
             .is_some_and(|t| t.elapsed() < RETRY_AFTER)
@@ -160,10 +159,11 @@ async fn connect_candidates(
         tried.insert(peer.remote_id.clone(), Instant::now());
 
         let tx = connections.clone();
-        let retry = retry.clone();
+        let incompatible = incompatible.clone();
         tokio::spawn(async move {
             let addr = format!("{}:{}", peer.ip, peer.port);
-            match Connection::connect(peer.clone(), network).await {
+            let remote_id = peer.remote_id.clone();
+            match Connection::connect(peer, network).await {
                 Ok(mut conn) => {
                     info!(
                         "Connected to peer {} (eth/{})",
@@ -174,10 +174,8 @@ async fn connect_candidates(
                 }
                 Err(e) => {
                     debug!("Failed to connect to peer {}: {}", addr, e);
-                    if let Some(Disconnected(TOO_MANY_PEERS)) = e.downcast_ref() {
-                        drop(slot);
-                        tokio::time::sleep(RETRY_AFTER).await;
-                        let _ = retry.send(peer).await;
+                    if is_incompatible(e.as_ref()) {
+                        incompatible.lock().unwrap().insert(remote_id);
                     }
                 }
             }

@@ -20,6 +20,9 @@ use crate::utils;
 /// on the peer.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// eth protocol versions we speak.
+const ETH_VERSIONS: [u32; 3] = [67, 68, 69];
+
 /// eth response message codes (without the base protocol offset).
 pub const BLOCK_HEADERS_CODE: u8 = 0x04;
 pub const BLOCK_BODIES_CODE: u8 = 0x06;
@@ -45,7 +48,7 @@ fn check_same_network(
             network.network_id,
             hex::encode(network.genesis_hash)
         );
-        return Err("Wrong network".into());
+        return Err(Incompatible("Wrong network").into());
     }
     let accepted = network.accepted_fork_hashes;
     if !accepted.is_empty()
@@ -69,7 +72,32 @@ fn check_same_network(
 #[derive(Debug)]
 pub struct Disconnected(pub u8);
 
-pub const TOO_MANY_PEERS: u8 = 0x04;
+/// Disconnect reasons meaning the peer will never talk to us: "useless peer"
+/// (no protocol in common) and "incompatible p2p version".
+const USELESS_PEER: u8 = 0x03;
+const INCOMPATIBLE_VERSION: u8 = 0x06;
+
+/// The peer can never be useful to us: another chain, or no eth version in
+/// common. Unlike other failures, there is no point trying it again.
+#[derive(Debug)]
+pub struct Incompatible(pub &'static str);
+
+impl std::fmt::Display for Incompatible {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl error::Error for Incompatible {}
+
+/// Whether a `connect` error means the peer is never worth trying again.
+pub fn is_incompatible(e: &(dyn error::Error + Send + Sync + 'static)) -> bool {
+    e.downcast_ref::<Incompatible>().is_some()
+        || matches!(
+            e.downcast_ref::<Disconnected>(),
+            Some(Disconnected(USELESS_PEER | INCOMPATIBLE_VERSION))
+        )
+}
 
 impl std::fmt::Display for Disconnected {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -259,15 +287,16 @@ impl Connection {
             serde_json::to_string(&hello_message).unwrap()
         );
 
-        // We need to find the highest eth version it supports
-        let mut version = 0;
-        for capability in &hello_message.capabilities {
-            if capability.0.to_string() == "eth" {
-                if capability.1 > version {
-                    version = capability.1;
-                }
-            }
-        }
+        // Use the highest eth version we both support.
+        let Some(version) = hello_message
+            .capabilities
+            .iter()
+            .filter(|c| c.0.to_string() == "eth" && ETH_VERSIONS.contains(&c.1))
+            .map(|c| c.1)
+            .max()
+        else {
+            return Err(Incompatible("No eth version in common").into());
+        };
 
         debug!("Sending HELLO message");
         let secp = secp256k1::Secp256k1::new();
@@ -275,7 +304,7 @@ impl Connection {
         let hello_message = types::HelloMessage {
             protocol_version: message::BASE_PROTOCOL_VERSION,
             client: String::from("deadbrain corp."),
-            capabilities: vec![("eth".into(), 67), ("eth".into(), 68), ("eth".into(), 69)],
+            capabilities: ETH_VERSIONS.iter().map(|v| ("eth".into(), *v)).collect(),
             port: 0,
             id: secp256k1::PublicKey::from_secret_key(&secp, &private_key).serialize_uncompressed()
                 [1..]
