@@ -64,6 +64,49 @@ fn check_same_network(
     Ok(())
 }
 
+/// The peer sent a disconnect message during the handshake, with this reason
+/// code (see the devp2p spec; 0x04 is "too many peers").
+#[derive(Debug)]
+pub struct Disconnected(pub u8);
+
+pub const TOO_MANY_PEERS: u8 = 0x04;
+
+impl std::fmt::Display for Disconnected {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Disconnected by peer (reason {:#04x})", self.0)
+    }
+}
+
+impl error::Error for Disconnected {}
+
+/// Reads the reason code from a disconnect message body (after the code byte).
+/// Peers send it as `[reason]` or a bare `reason`, snappy-compressed or not.
+fn disconnect_reason(payload: &[u8]) -> u8 {
+    let read = |data: &[u8]| -> Option<u8> {
+        let r = rlp::Rlp::new(data);
+        // A compressed payload can start like valid RLP: require it to fill the data.
+        let info = r.payload_info().ok()?;
+        if info.header_len + info.value_len != data.len() {
+            return None;
+        }
+        if r.is_list() {
+            // An empty list means "disconnect requested" (0x00).
+            if r.item_count().ok()? == 0 {
+                return Some(0);
+            }
+            r.at(0).ok()?.as_val().ok()
+        } else {
+            r.as_val().ok()
+        }
+    };
+    read(payload)
+        .or_else(|| {
+            let data = snap::raw::Decoder::new().decompress_vec(payload).ok()?;
+            read(&data)
+        })
+        .unwrap_or(0xff)
+}
+
 pub struct Connection {
     pub handle: JoinHandle<()>,
     pub rx_tcp: Receiver<Vec<u8>>,
@@ -204,7 +247,7 @@ impl Connection {
         if uncrypted_body[0] == 0x01 {
             debug!("Disconnect message : {}", hex::encode(&uncrypted_body));
 
-            return Err("Disconnected peer".into());
+            return Err(Disconnected(disconnect_reason(&uncrypted_body[1..])).into());
         }
 
         // Should be HELLO
@@ -290,7 +333,7 @@ impl Connection {
         if uncrypted_body[0] == 0x01 {
             debug!("Disconnect message : {}", hex::encode(&uncrypted_body));
 
-            return Err("Disconnected peer".into());
+            return Err(Disconnected(disconnect_reason(&uncrypted_body[1..])).into());
         }
 
         let their_blockhash: Vec<u8>;
@@ -454,5 +497,18 @@ impl Connection {
             eth_protocol_version: version,
             slot: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::disconnect_reason;
+
+    #[test]
+    fn disconnect_reasons_seen_from_peers() {
+        assert_eq!(disconnect_reason(&hex::decode("c104").unwrap()), 4);
+        assert_eq!(disconnect_reason(&hex::decode("0204c104").unwrap()), 4);
+        assert_eq!(disconnect_reason(&hex::decode("010004").unwrap()), 4);
+        assert_eq!(disconnect_reason(&hex::decode("c0").unwrap()), 0);
     }
 }

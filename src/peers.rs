@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, mpsc};
 
 use crate::configs::Peer;
-use crate::connection::Connection;
+use crate::connection::{Connection, Disconnected, TOO_MANY_PEERS};
 use crate::dns_discovery;
 use crate::networks::Network;
 
@@ -16,7 +16,9 @@ use crate::networks::Network;
 /// connection is dropped by the sync, so in-flight handshakes count too.
 pub const MAX_PEERS: usize = 50;
 
-/// Peers that failed (mostly "too many peers") are tried again after this.
+/// A peer is not tried again before this. Peers that refused us with "too many
+/// peers" are queued again after it, since their slots free up over time;
+/// others are only retried if discovery finds them again.
 const RETRY_AFTER: Duration = Duration::from_secs(600);
 
 /// The DNS tree changes slowly.
@@ -61,10 +63,15 @@ pub fn spawn(network: Network, config_peers: Vec<Peer>) -> mpsc::Receiver<Connec
     }
 
     if !network.bootnodes.is_empty() {
-        tokio::spawn(run_discv4(network, candidate_tx));
+        tokio::spawn(run_discv4(network, candidate_tx.clone()));
     }
 
-    tokio::spawn(connect_candidates(network, candidate_rx, conn_tx));
+    tokio::spawn(connect_candidates(
+        network,
+        candidate_rx,
+        candidate_tx,
+        conn_tx,
+    ));
 
     conn_rx
 }
@@ -131,6 +138,7 @@ async fn run_discv4(network: Network, candidates: mpsc::Sender<Peer>) {
 async fn connect_candidates(
     network: Network,
     mut candidates: mpsc::Receiver<Peer>,
+    retry: mpsc::Sender<Peer>,
     connections: mpsc::Sender<Connection>,
 ) {
     let slots = Arc::new(Semaphore::new(MAX_PEERS));
@@ -152,9 +160,10 @@ async fn connect_candidates(
         tried.insert(peer.remote_id.clone(), Instant::now());
 
         let tx = connections.clone();
+        let retry = retry.clone();
         tokio::spawn(async move {
             let addr = format!("{}:{}", peer.ip, peer.port);
-            match Connection::connect(peer, network).await {
+            match Connection::connect(peer.clone(), network).await {
                 Ok(mut conn) => {
                     info!(
                         "Connected to peer {} (eth/{})",
@@ -163,7 +172,14 @@ async fn connect_candidates(
                     conn.slot = Some(slot);
                     let _ = tx.send(conn).await;
                 }
-                Err(e) => debug!("Failed to connect to peer {}: {}", addr, e),
+                Err(e) => {
+                    debug!("Failed to connect to peer {}: {}", addr, e);
+                    if let Some(Disconnected(TOO_MANY_PEERS)) = e.downcast_ref() {
+                        drop(slot);
+                        tokio::time::sleep(RETRY_AFTER).await;
+                        let _ = retry.send(peer).await;
+                    }
+                }
             }
         });
 
