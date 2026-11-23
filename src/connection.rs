@@ -25,11 +25,12 @@ pub const BLOCK_HEADERS_CODE: u8 = 0x04;
 pub const BLOCK_BODIES_CODE: u8 = 0x06;
 pub const RECEIPTS_CODE: u8 = 0x10;
 
-/// Checks a peer's STATUS is for our network: same network id and genesis.
+/// Checks a peer's STATUS is for our network and at the chain tip: same network
+/// id and genesis, and a fork hash in `network.accepted_fork_hashes`.
 ///
-/// The fork hash is not checked: it changes at every hard fork, so pinning one
-/// value rejects every peer as soon as the network upgrades. Peers on another
-/// chain are still caught by the genesis check.
+/// The fork hash a node announces follows its own head, so peers still syncing
+/// (or crawlers announcing genesis) are rejected, as are other chains sharing
+/// our genesis. Without this, their low heads can be taken for the chain tip.
 fn check_same_network(
     network: &networks::Network,
     network_id: u64,
@@ -46,11 +47,20 @@ fn check_same_network(
         );
         return Err("Wrong network".into());
     }
-    debug!(
-        "Peer fork id: {} next {}",
-        hex::encode(&fork_id.0),
-        fork_id.1
-    );
+    let accepted = network.accepted_fork_hashes;
+    if !accepted.is_empty()
+        && !accepted
+            .iter()
+            .any(|h| h.to_be_bytes().as_slice() == fork_id.0.as_slice())
+    {
+        warn!(
+            "Wrong fork id {} (next {}), expected one of {:x?}",
+            hex::encode(&fork_id.0),
+            fork_id.1,
+            accepted
+        );
+        return Err("Wrong fork id".into());
+    }
     Ok(())
 }
 

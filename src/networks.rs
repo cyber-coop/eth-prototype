@@ -7,6 +7,10 @@ pub struct Network {
     pub head_td: u64,
     pub fork_id: [u32; 2],
     pub network_id: u64,
+    /// Fork hashes accepted from peers: the current one (plus the next one around
+    /// a hard fork). Peers still syncing or on another chain announce a different
+    /// hash and are rejected. Must be updated at every fork. Empty skips the check.
+    pub accepted_fork_hashes: &'static [u32],
 }
 
 impl Network {
@@ -19,6 +23,7 @@ impl Network {
         head_td: 50000820485795157,
         fork_id: [0x7119b6b3, 0],
         network_id: 0x03,
+        accepted_fork_hashes: &[],
     };
 
     // Ethereum Rinkeby
@@ -30,6 +35,7 @@ impl Network {
         head_td: 20304096,
         fork_id: [0x8e29f2f3, 0],
         network_id: 0x04,
+        accepted_fork_hashes: &[],
     };
 
     // Ethereum Goerli
@@ -41,6 +47,7 @@ impl Network {
         head_td: 10790000,
         fork_id: [0x70cc14e2, 0],
         network_id: 0x05,
+        accepted_fork_hashes: &[],
     };
 
     // Ethereum Sepolia
@@ -52,6 +59,7 @@ impl Network {
         head_td: 0,
         fork_id: [0xed88b5fd, 0],
         network_id: 0xaa36a7,
+        accepted_fork_hashes: &[],
     };
 
     // Ethereum Holesky
@@ -63,6 +71,7 @@ impl Network {
         head_td: 1,
         fork_id: [0xdfbd9bed, 0],
         network_id: 0x4268,
+        accepted_fork_hashes: &[],
     };
 
     // Ethereum Hoodi
@@ -74,6 +83,7 @@ impl Network {
         head_td: 0,
         fork_id: [0x23aa1351, 0],
         network_id: 0x88bb0,
+        accepted_fork_hashes: &[],
     };
 
     // Ethereum Mainnet
@@ -87,6 +97,7 @@ impl Network {
         // still syncing, so it keeps working across hard forks (same as Puddle).
         fork_id: [0xfc64ec04, 1150000],
         network_id: 1,
+        accepted_fork_hashes: &[0x07c9462e],
     };
 
     // Binance Mainnet
@@ -99,6 +110,7 @@ impl Network {
         // Fork id reported by most live BSC peers (2026-09-22, from Puddle).
         fork_id: [0xd38cc282, 0],
         network_id: 0x38,
+        accepted_fork_hashes: &[],
     };
 
     // Polygon Mainnet
@@ -110,6 +122,7 @@ impl Network {
         head_td: 0,
         fork_id: [0x22d523b2, 0],
         network_id: 0x89,
+        accepted_fork_hashes: &[],
     };
 
     // Base Mainnet
@@ -121,6 +134,7 @@ impl Network {
         head_td: 0,
         fork_id: [0x1cfeafc9, 0],
         network_id: 0x2105,
+        accepted_fork_hashes: &[],
     };
 
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
