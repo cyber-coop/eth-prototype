@@ -4,14 +4,9 @@ user = "postgres"
 password = "wow"
 dbname = "blockchains"
 
-# Peers are found through the network's DNS tree (EIP-1459).
-# Optionally list extra peers to try first:
-[[peers]]
-ip = "127.0.0.1"
-port = 30303
-remote_id = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-
-[[peers]]
-ip = "127.0.0.1"
-port = 30303
-remote_id = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+# Peers are optional: they are found through the network's DNS tree
+# (EIP-1459) and discv4. Uncomment to list extra peers to try first.
+# [[peers]]
+# ip = "127.0.0.1"
+# port = 30303
+# remote_id = "<128 hex chars node id>"

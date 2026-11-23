@@ -44,13 +44,10 @@ password = "wow"
 dbname = "blockchains"
 
 # Optional: extra peers to try first
-[[peers]]
-ip = "127.0.0.1"
-port = 30303
-remote_id = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-
-[[peers]]
-...
+# [[peers]]
+# ip = "127.0.0.1"
+# port = 30303
+# remote_id = "<128 hex chars node id>"
 
 ```
 
