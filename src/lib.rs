@@ -1,6 +1,7 @@
 pub mod configs;
 pub mod connection;
 pub mod database;
+pub mod dns_discovery;
 pub mod eth;
 pub mod mac;
 pub mod message;

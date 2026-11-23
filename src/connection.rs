@@ -38,7 +38,7 @@ fn check_same_network(
     fork_id: &(Vec<u8>, u64),
 ) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     if network_id != network.network_id || genesis != network.genesis_hash {
-        warn!(
+        debug!(
             "Wrong network: network id {} genesis {} (expected {} and {})",
             network_id,
             hex::encode(genesis),
@@ -53,7 +53,7 @@ fn check_same_network(
             .iter()
             .any(|h| h.to_be_bytes().as_slice() == fork_id.0.as_slice())
     {
-        warn!(
+        debug!(
             "Wrong fork id {} (next {}), expected one of {:x?}",
             hex::encode(&fork_id.0),
             fork_id.1,
@@ -146,7 +146,7 @@ impl Connection {
             .to_vec();
         let pad = vec![0; 100]; // should be generated randomly but we don't really care
 
-        info!("Creating EIP8 Auth message");
+        debug!("Creating EIP8 Auth message");
         let init_msg = utils::create_auth_eip8(
             &peer.remote_id,
             &private_key,
@@ -156,14 +156,13 @@ impl Connection {
         );
 
         // send the message
-        info!("Sending EIP8 Auth message");
+        debug!("Sending EIP8 Auth message");
         utils::send_eip8_auth_message(&init_msg, &mut stream).await?;
 
-        info!("waiting for answer... (ACK message)");
+        debug!("waiting for answer... (ACK message)");
         let (payload, shared_mac_data) = utils::read_ack_message(&mut stream).await?;
 
-        info!("ACK message received");
-        info!("Received Ack");
+        debug!("Received Ack");
         if payload[0] != 0x04 {
             return Err("Didn't received ACK when expecting it".into());
         }
@@ -180,20 +179,20 @@ impl Connection {
             init_msg,
         );
 
-        info!("Frame setup done !");
+        debug!("Frame setup done !");
 
         // Split the stream so reads and writes can later run in separate tasks.
         // Reading inside a `select!` is not cancel-safe: a partially read frame
         // would be dropped whenever a write won the race, desynchronising the stream.
         let (mut reader, mut writer) = stream.into_split();
 
-        info!("Received Ack, waiting for Header");
+        debug!("Received Ack, waiting for Header");
 
         let uncrypted_body =
             utils::read_message(&mut reader, &mut ingress_mac, &mut ingress_aes).await?;
 
         if uncrypted_body[0] == 0x01 {
-            warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
+            debug!("Disconnect message : {}", hex::encode(&uncrypted_body));
 
             return Err("Disconnected peer".into());
         }
@@ -202,7 +201,7 @@ impl Connection {
         assert_eq!(0x80, uncrypted_body[0]);
         let hello_message = message::parse_hello_message(uncrypted_body[1..].to_vec());
 
-        info!(
+        debug!(
             "HelloMessage {}",
             serde_json::to_string(&hello_message).unwrap()
         );
@@ -217,7 +216,7 @@ impl Connection {
             }
         }
 
-        info!("Sending HELLO message");
+        debug!("Sending HELLO message");
         let secp = secp256k1::Secp256k1::new();
         let private_key = secp256k1::SecretKey::from_slice(&private_key).unwrap();
         let hello_message = types::HelloMessage {
@@ -232,7 +231,7 @@ impl Connection {
         let hello = message::create_hello_message(hello_message);
         utils::send_message(hello, &mut writer, &mut egress_mac, &mut egress_aes).await?;
 
-        info!("Sending STATUS message");
+        debug!("Sending STATUS message");
 
         let payload: Vec<u8>;
         if version == 69 {
@@ -275,11 +274,11 @@ impl Connection {
         }
         utils::send_message(payload, &mut writer, &mut egress_mac, &mut egress_aes).await?;
 
-        info!("Handling STATUS message");
+        debug!("Handling STATUS message");
         let uncrypted_body =
             utils::read_message(&mut reader, &mut ingress_mac, &mut ingress_aes).await?;
         if uncrypted_body[0] == 0x01 {
-            warn!("Disconnect message : {}", hex::encode(&uncrypted_body));
+            debug!("Disconnect message : {}", hex::encode(&uncrypted_body));
 
             return Err("Disconnected peer".into());
         }

@@ -4,7 +4,8 @@ user = "postgres"
 password = "wow"
 dbname = "blockchains"
 
-# Mainnet
+# Peers are found through the network's DNS tree (EIP-1459).
+# Optionally list extra peers to try first:
 [[peers]]
 ip = "127.0.0.1"
 port = 30303

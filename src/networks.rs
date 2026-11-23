@@ -11,6 +11,8 @@ pub struct Network {
     /// a hard fork). Peers still syncing or on another chain announce a different
     /// hash and are rejected. Must be updated at every fork. Empty skips the check.
     pub accepted_fork_hashes: &'static [u32],
+    /// EIP-1459 DNS tree listing peers for this network, if one is published.
+    pub dns_tree: Option<&'static str>,
 }
 
 impl Network {
@@ -24,6 +26,7 @@ impl Network {
         fork_id: [0x7119b6b3, 0],
         network_id: 0x03,
         accepted_fork_hashes: &[],
+        dns_tree: None,
     };
 
     // Ethereum Rinkeby
@@ -36,6 +39,7 @@ impl Network {
         fork_id: [0x8e29f2f3, 0],
         network_id: 0x04,
         accepted_fork_hashes: &[],
+        dns_tree: None,
     };
 
     // Ethereum Goerli
@@ -48,6 +52,7 @@ impl Network {
         fork_id: [0x70cc14e2, 0],
         network_id: 0x05,
         accepted_fork_hashes: &[],
+        dns_tree: None,
     };
 
     // Ethereum Sepolia
@@ -60,6 +65,7 @@ impl Network {
         fork_id: [0xed88b5fd, 0],
         network_id: 0xaa36a7,
         accepted_fork_hashes: &[],
+        dns_tree: Some("all.sepolia.ethdisco.net"),
     };
 
     // Ethereum Holesky
@@ -72,6 +78,7 @@ impl Network {
         fork_id: [0xdfbd9bed, 0],
         network_id: 0x4268,
         accepted_fork_hashes: &[],
+        dns_tree: Some("all.holesky.ethdisco.net"),
     };
 
     // Ethereum Hoodi
@@ -84,6 +91,7 @@ impl Network {
         fork_id: [0x23aa1351, 0],
         network_id: 0x88bb0,
         accepted_fork_hashes: &[],
+        dns_tree: Some("all.hoodi.ethdisco.net"),
     };
 
     // Ethereum Mainnet
@@ -98,6 +106,7 @@ impl Network {
         fork_id: [0xfc64ec04, 1150000],
         network_id: 1,
         accepted_fork_hashes: &[0x07c9462e],
+        dns_tree: Some("all.mainnet.ethdisco.net"),
     };
 
     // Binance Mainnet
@@ -111,6 +120,7 @@ impl Network {
         fork_id: [0xd38cc282, 0],
         network_id: 0x38,
         accepted_fork_hashes: &[],
+        dns_tree: None,
     };
 
     // Polygon Mainnet
@@ -123,6 +133,7 @@ impl Network {
         fork_id: [0x22d523b2, 0],
         network_id: 0x89,
         accepted_fork_hashes: &[],
+        dns_tree: Some("pos.polygon-peers.io"),
     };
 
     // Base Mainnet
@@ -135,6 +146,7 @@ impl Network {
         fork_id: [0x1cfeafc9, 0],
         network_id: 0x2105,
         accepted_fork_hashes: &[],
+        dns_tree: None,
     };
 
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {

@@ -43,7 +43,7 @@ user = "postgres"
 password = "wow"
 dbname = "blockchains"
 
-# Mainnet peers to connect to
+# Optional: extra peers to try first
 [[peers]]
 ip = "127.0.0.1"
 port = 30303
@@ -57,9 +57,9 @@ remote_id = "0000000000000000000000000000000000000000000000000000000000000000000
 
 ### Finding peers to connect with
 
-If you don't have any peer to connect with, you can grab one in this [database](https://cyber.coop/network_id/1).
+Peers are found automatically through the network's DNS tree ([EIP-1459](https://eips.ethereum.org/EIPS/eip-1459)), for example `all.mainnet.ethdisco.net`. The node connects to up to 50 of them.
 
-**NOTE**: This database updates daily and lists all "reachable" peers but some of them allow to establish a connection, some others not, you need to try them by yourself.
+You can still list peers in `config.toml`; they are tried first. Networks without a DNS tree (BSC, Base) need them. You can grab some in this [database](https://cyber.coop/network_id/1).
 
 ### Configuration on local/Docker
 

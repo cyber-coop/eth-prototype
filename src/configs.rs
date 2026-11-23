@@ -22,6 +22,8 @@ pub struct Peer {
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     pub database: DatabaseConfig,
+    /// Extra peers to try first. Optional: peers are also found through DNS.
+    #[serde(default)]
     pub peers: Vec<Peer>,
 }
 

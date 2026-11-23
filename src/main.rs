@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use eth_prototype::connection::{BLOCK_BODIES_CODE, BLOCK_HEADERS_CODE, Connection, RECEIPTS_CODE};
 use eth_prototype::eth;
 use eth_prototype::types::{Block, Receipt, Transaction, Withdrawal};
-use eth_prototype::{configs, database, networks, utils, verify};
+use eth_prototype::{configs, database, dns_discovery, networks, utils, verify};
 
 #[macro_use]
 extern crate tracing;
@@ -21,6 +21,11 @@ const BLOCK_NUM: usize = 1024;
 // sync starts this many blocks behind the tip; forward sync catches up later
 // and handles reorgs.
 const REORG_SAFETY_DEPTH: usize = 64;
+
+// Stop connecting once this many peers are connected; at most
+// CONNECT_CONCURRENCY handshakes run at the same time.
+const MAX_PEERS: usize = 50;
+const CONNECT_CONCURRENCY: usize = 100;
 
 // How long forward sync waits for the database thread to save a batch.
 const DB_CONFIRM_TIMEOUT: Duration = Duration::from_secs(600);
@@ -372,25 +377,57 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
+        // Peers from the config first, then the network's DNS tree in random order.
+        let mut candidates: Vec<configs::Peer> = config.peers;
+        if let Some(tree) = network.dns_tree {
+            let mut found = dns_discovery::discover_peers(tree).await;
+            secp256k1::rand::seq::SliceRandom::shuffle(
+                found.as_mut_slice(),
+                &mut secp256k1::rand::thread_rng(),
+            );
+            candidates.extend(found);
+        }
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|p| seen.insert(p.remote_id.clone()));
+        let total = candidates.len();
+        let mut candidates = candidates.into_iter();
+
         let mut connections: Vec<Connection> = vec![];
         let mut tasks = JoinSet::new();
-
-        for peer in config.peers {
-            tasks.spawn(async move { Connection::connect(peer, network).await });
-        }
-
-        while let Some(result) = tasks.join_next().await {
+        let mut failed = 0;
+        loop {
+            while connections.len() < MAX_PEERS && tasks.len() < CONNECT_CONCURRENCY {
+                let Some(peer) = candidates.next() else { break };
+                tasks.spawn(async move { Connection::connect(peer, network).await });
+            }
+            let Some(result) = tasks.join_next().await else {
+                break;
+            };
             match result {
                 Ok(Ok(connection)) => {
-                    info!("Connection established");
                     connections.push(connection);
+                    if connections.len() >= MAX_PEERS {
+                        tasks.abort_all();
+                    }
                 }
-                Ok(Err(e)) => warn!("Failed to connect to peer: {}", e),
-                Err(e) => warn!("Task panicked: {:?}", e),
+                Ok(Err(e)) => {
+                    debug!("Failed to connect to peer: {}", e);
+                    failed += 1;
+                }
+                Err(e) if e.is_cancelled() => {}
+                Err(e) => {
+                    warn!("Connection task panicked: {:?}", e);
+                    failed += 1;
+                }
             }
         }
 
-        info!("Tried all peers");
+        info!(
+            "Connected to {} peers ({} failed, {} candidates)",
+            connections.len(),
+            failed,
+            total
+        );
 
         let mut start_from_tip = false;
 
