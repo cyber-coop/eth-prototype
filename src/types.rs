@@ -71,7 +71,7 @@ pub struct Block {
     pub txs_root: Vec<u8>,
     pub receipts_root: Vec<u8>,
     pub bloom: Vec<u8>,
-    pub difficulty: u64,
+    pub difficulty: u128, // AuRa chains (Gnosis) use values near 2^128
     pub number: u32,
     pub gas_limit: u64,
     pub gas_used: u64,

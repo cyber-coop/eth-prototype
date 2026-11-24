@@ -534,7 +534,7 @@ pub fn util_parse_block_header(payload: Vec<u8>) -> Block {
     let txs_root: Vec<u8> = r.at(4).unwrap().as_val().unwrap();
     let receipts_root: Vec<u8> = r.at(5).unwrap().as_val().unwrap();
     let bloom: Vec<u8> = r.at(6).unwrap().as_val().unwrap();
-    let difficulty: u64 = r.at(7).unwrap().as_val().unwrap();
+    let difficulty: u128 = r.at(7).unwrap().as_val().unwrap();
     let number: u32 = r.at(8).unwrap().as_val().unwrap();
     let gas_limit: u64 = r.at(9).unwrap().as_val().unwrap();
     let gas_used: u64 = r.at(10).unwrap().as_val().unwrap();
