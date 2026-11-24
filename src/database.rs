@@ -95,6 +95,21 @@ pub fn create_tables(schema_name: &String, postgres_client: &mut Client) {
     postgres_client.batch_execute(&query).unwrap();
 }
 
+/// Runs a COPY with `data`, sent in chunks: the writer sends each write as one
+/// message, and Postgres drops the connection on messages over 1 GB.
+fn copy_in(
+    transaction: &mut postgres::Transaction,
+    query: &str,
+    data: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut writer = transaction.copy_in(query)?;
+    for chunk in data.as_bytes().chunks(1 << 20) {
+        writer.write_all(chunk)?;
+    }
+    writer.finish()?;
+    Ok(())
+}
+
 pub fn save_blocks(
     blocks: &Vec<(
         Block,
@@ -262,50 +277,44 @@ pub fn save_blocks(
 
     // start a transaction to do rollback in case something goes wrong
     let mut transaction = postgres_client.transaction()?;
-    let mut block_writer = transaction
-        .copy_in(format!("COPY {}.blocks FROM stdin (DELIMITER ';')", schema_name).as_str())?;
-    block_writer.write_all(blocks_string.as_bytes())?;
-    block_writer.finish()?;
-
-    let mut contract_writer = transaction
-        .copy_in(format!("COPY {}.contracts FROM stdin (DELIMITER ';')", schema_name).as_str())?;
-    contract_writer.write_all(contracts_string.as_bytes())?;
-    contract_writer.finish()?;
-
-    let mut ommers_writer = transaction
-        .copy_in(format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name).as_str())?;
-    ommers_writer.write_all(ommers_string.as_bytes())?;
-    ommers_writer.finish()?;
-
-    let mut withdrawals_writer = transaction.copy_in(
-        format!(
+    copy_in(
+        &mut transaction,
+        &format!("COPY {}.blocks FROM stdin (DELIMITER ';')", schema_name),
+        &blocks_string,
+    )?;
+    copy_in(
+        &mut transaction,
+        &format!("COPY {}.contracts FROM stdin (DELIMITER ';')", schema_name),
+        &contracts_string,
+    )?;
+    copy_in(
+        &mut transaction,
+        &format!("COPY {}.ommers FROM stdin (DELIMITER ';')", schema_name),
+        &ommers_string,
+    )?;
+    copy_in(
+        &mut transaction,
+        &format!(
             "COPY {}.withdrawals FROM stdin (DELIMITER ';')",
             schema_name
-        )
-        .as_str(),
+        ),
+        &withdrawals_string,
     )?;
-    withdrawals_writer.write_all(withdrawals_string.as_bytes())?;
-    withdrawals_writer.finish()?;
-
-    let mut receipt_writer = transaction
-        .copy_in(format!("COPY {}.receipts FROM stdin (DELIMITER ';')", schema_name).as_str())?;
-    receipt_writer.write_all(receipts_string.as_bytes())?;
-    receipt_writer.finish()?;
-
-    let mut chunk_index = 0;
-    let _number_of_chunks = transactions_strings.len();
+    copy_in(
+        &mut transaction,
+        &format!("COPY {}.receipts FROM stdin (DELIMITER ';')", schema_name),
+        &receipts_string,
+    )?;
     for txs in transactions_strings {
-        let mut transaction_writer = transaction.copy_in(
-            format!(
-                "COPY {}.transactions FROM stdin (DELIMITER ';', NULL 'null')", // use ; as delimiter to avoid confusion with json
+        // use ; as delimiter to avoid confusion with json
+        copy_in(
+            &mut transaction,
+            &format!(
+                "COPY {}.transactions FROM stdin (DELIMITER ';', NULL 'null')",
                 schema_name
-            )
-            .as_str(),
+            ),
+            &txs,
         )?;
-        transaction_writer.write_all(txs.as_bytes())?;
-        transaction_writer.finish()?;
-
-        chunk_index = chunk_index + 1;
     }
 
     // commit the transaction

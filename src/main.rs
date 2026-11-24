@@ -364,9 +364,9 @@ fn main() {
                             warn!("Failed to save blocks ({}), retrying in {:?}", e, delay);
                             thread::sleep(delay);
                             delay = (delay * 2).min(Duration::from_secs(60));
-                            if postgres_client.is_closed() {
-                                postgres_client = connect_with_retry(&db_params);
-                            }
+                            // Reconnect every time: a connection dropped by the
+                            // server mid-COPY is not always reported by is_closed().
+                            postgres_client = connect_with_retry(&db_params);
                         }
                     }
                 }
