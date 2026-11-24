@@ -160,6 +160,23 @@ impl Network {
         stop_block: 0,
     };
 
+    // Gnosis Chiado testnet (AuRa before the merge, like Gnosis).
+    pub const GNOSIS_CHIADO: Network = Network {
+        genesis_hash: [
+            173, 164, 79, 216, 210, 236, 171, 139, 8, 242, 86, 175, 7, 173, 62, 119, 127, 23, 251,
+            67, 79, 143, 142, 103, 139, 49, 47, 87, 98, 18, 186, 154,
+        ],
+        head_td: 0,
+        // Genesis hash + first fork (Shanghai timestamp), like a node still syncing.
+        fork_id: [0x50d39d7b, 1684934220],
+        network_id: 10200,
+        // Fusaka (2026-03-16).
+        accepted_fork_hashes: &[0x71c457cd],
+        dns_tree: None,
+        bootnodes: CHIADO_BOOTNODES,
+        stop_block: 0,
+    };
+
     // Binance Mainnet
     pub const BINANCE_MAINNET: Network = Network {
         genesis_hash: [
@@ -217,6 +234,7 @@ impl Network {
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
             "ethereum_classic" => Ok(Self::ETHEREUM_CLASSIC),
             "gnosis_mainnet" => Ok(Self::GNOSIS_MAINNET),
+            "gnosis_chiado" => Ok(Self::GNOSIS_CHIADO),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
             "polygon_mainnet" => Ok(Self::POLYGON_MAINNET),
             "base_mainnet" => Ok(Self::BASE_MAINNET),
@@ -235,6 +253,7 @@ impl Network {
             &Self::ETHEREUM_MAINNET => "ethereum_mainnet",
             &Self::ETHEREUM_CLASSIC => "ethereum_classic",
             &Self::GNOSIS_MAINNET => "gnosis_mainnet",
+            &Self::GNOSIS_CHIADO => "gnosis_chiado",
             &Self::BINANCE_MAINNET => "binance_mainnet",
             &Self::POLYGON_MAINNET => "polygon_mainnet",
             &Self::BASE_MAINNET => "base_mainnet",
@@ -270,6 +289,14 @@ pub const GNOSIS_BOOTNODES: &[&str] = &[
     "enode://fc86a93545c56322dd861180b76632b9baeb65af8f304269b489b4623ae060847569c3c3c10c4b39baf221a2cdefea66efabce061a542cdcda374cbba45aa3d4@51.68.39.206:30303",
     "enode://0e6dd3815a627893515465130c1e95aa73b18fe2f723b2467f3abf94df9be036f27595f301b5e78750ad128e59265f980c92033ae903330c0460c40ae088c04a@35.210.37.245:30303",
     "enode://b72d6233d50bef7b31c09f3ea39459257520178f985a872bbaa4e371ed619455b7671053ffe985af1b5fb3270606e2a49e4e67084debd75e6c9b93e227c5b01c@35.210.156.59:30303",
+];
+
+// From Nethermind (Chains/chiado.json), converted from ENR.
+pub const CHIADO_BOOTNODES: &[&str] = &[
+    "enode://d17214473afab4811e2efcb927f58440c74d22982dfbf4a1aff6c0ddaf700a701c4b967438be65fcb47f468896ae3b0274ec1608961d692740185ce8032692eb@51.75.246.2:30303",
+    "enode://31081f090180118a0a220b89cb520060d35bdf1f0bf4bce36ba2d9363ecfd56bfe12537dae62f0a964167b61cd1624fd8b206df07e7ca93ce4db2a730125e319@57.129.70.222:30303",
+    "enode://4e10cb0cacc3b0a54f36ed306e7e59741f552c48b38d1a2603f7f8c853537b916156d928a2c479fe06cf48ffeec34c075871688babe136b969395fe08f1132ac@57.128.252.123:30303",
+    "enode://26c8f288ca7579cac9f1cef98c1357f82b2a9305381587884b9a0d17fd42c2e2b7832867ca3f57fcb91f21ca3498ba36bb6beb1d9f732a673b8ea4794f9d31d6@54.39.148.98:30303",
 ];
 
 pub const BINANCE_BOOTNODES: &[&str] = &[

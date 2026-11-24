@@ -18,6 +18,7 @@ ethereum_hoodi
 ethereum_mainnet
 ethereum_classic
 gnosis_mainnet
+gnosis_chiado
 binance_mainnet
 polygon_mainnet
 base_mainnet
