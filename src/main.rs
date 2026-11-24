@@ -203,7 +203,7 @@ fn main() {
     // Read cli args for network value
     let network_arg: String = env::args()
         .nth(1)
-        .expect("expecting a network (ethereum_ropsten, ethereum_rinkeby, ethereum_goerli, ethereum_sepolia, ethereum_holesky, ethereum_hoodi, ethereum_mainnet or binance_mainnet).");
+        .expect("expecting a network (ethereum_ropsten, ethereum_rinkeby, ethereum_goerli, ethereum_sepolia, ethereum_holesky, ethereum_hoodi, ethereum_mainnet, ethereum_classic or binance_mainnet).");
     let network = networks::Network::find(network_arg.as_str()).unwrap();
 
     // Load config values from the config file
@@ -230,9 +230,9 @@ fn main() {
     // create the tables if they don't exist
     database::create_tables(&network.to_string(), &mut postgres_client);
 
-    // get the hash of the next block in the chain going reverse
-    // we should check if we are at the genesis block and that the parenthash is 0x0000......
-    let result = postgres_client.query(format!("SELECT parent_hash FROM {0}.blocks WHERE number = (SELECT MIN(number) FROM {0}.blocks);", network_arg).as_str(), &[]).unwrap();
+    // get the hash of the next block in the chain going reverse; the initial sync
+    // is done once the lowest block is the network's stop block (genesis usually)
+    let result = postgres_client.query(format!("SELECT parent_hash, number FROM {0}.blocks WHERE number = (SELECT MIN(number) FROM {0}.blocks);", network_arg).as_str(), &[]).unwrap();
 
     if result.len() > 0 {
         let row = &result[0];
@@ -246,10 +246,8 @@ fn main() {
             }
         }
 
-        if current_hash
-            == hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
-                .unwrap()
-        {
+        let lowest: i32 = result[0].get(1);
+        if lowest as u32 == network.stop_block {
             info!("We are already synced completly!");
 
             // We get the highest block to keep indexing the new ones
@@ -374,7 +372,7 @@ fn main() {
                 *last_confirmed_db.lock().unwrap() =
                     Some((last, batch.last().unwrap().0.hash.clone()));
 
-                if network.genesis_hash.to_vec() == batch.last().unwrap().0.hash.to_vec() {
+                if last == network.stop_block {
                     info!(
                         "We are synced ! We are creating the indexes on the tables... This will take a while."
                     );
@@ -637,6 +635,16 @@ fn main() {
                     }
 
                     current_hash = headers.last().unwrap().parent_hash.to_vec();
+                    let mut headers = headers;
+                    // Nothing below the stop block is indexed.
+                    headers.retain(|h| h.number >= network.stop_block);
+                    if headers.last().is_none_or(|h| h.number == network.stop_block) {
+                        done.store(true, Ordering::Relaxed);
+                    }
+                    if headers.is_empty() {
+                        pool.push_back(conn);
+                        continue;
+                    }
                     headers
                 };
 
@@ -660,7 +668,7 @@ fn main() {
                             return Err(block_headers);
                         }
 
-                        if current_height == 0 {
+                        if current_height == network.stop_block {
                             info!("Data fully synced");
                             done_clone.store(true, Ordering::Relaxed);
                             return Ok(conn);

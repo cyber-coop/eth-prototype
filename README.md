@@ -16,12 +16,15 @@ ethereum_sepolia
 ethereum_holesky
 ethereum_hoodi
 ethereum_mainnet
+ethereum_classic
 binance_mainnet
 polygon_mainnet
 base_mainnet
 ```
 
 NOTES: getting recipts only work on **eth/69** for now. 
+
+`ethereum_classic` stops at block 1,920,000 (the DAO fork): the blocks before it are the same as `ethereum_mainnet`.
 
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install)

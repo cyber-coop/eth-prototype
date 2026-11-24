@@ -15,6 +15,9 @@ pub struct Network {
     pub dns_tree: Option<&'static str>,
     /// discv4 bootnodes. Empty disables discv4 for this network.
     pub bootnodes: &'static [&'static str],
+    /// Lowest block indexed: the initial sync stops there instead of genesis.
+    /// Used for chains that forked off another one we already index.
+    pub stop_block: u32,
 }
 
 impl Network {
@@ -30,6 +33,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: None,
         bootnodes: &[],
+        stop_block: 0,
     };
 
     // Ethereum Rinkeby
@@ -44,6 +48,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: None,
         bootnodes: &[],
+        stop_block: 0,
     };
 
     // Ethereum Goerli
@@ -58,6 +63,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: None,
         bootnodes: &[],
+        stop_block: 0,
     };
 
     // Ethereum Sepolia
@@ -72,6 +78,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: Some("all.sepolia.ethdisco.net"),
         bootnodes: &[],
+        stop_block: 0,
     };
 
     // Ethereum Holesky
@@ -86,6 +93,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: Some("all.holesky.ethdisco.net"),
         bootnodes: &[],
+        stop_block: 0,
     };
 
     // Ethereum Hoodi
@@ -100,6 +108,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: Some("all.hoodi.ethdisco.net"),
         bootnodes: &[],
+        stop_block: 0,
     };
 
     // Ethereum Mainnet
@@ -116,6 +125,21 @@ impl Network {
         accepted_fork_hashes: &[0x07c9462e],
         dns_tree: Some("all.mainnet.ethdisco.net"),
         bootnodes: ETHEREUM_BOOTNODES,
+        stop_block: 0,
+    };
+
+    // Ethereum Classic: same genesis and network id as mainnet, told apart by the
+    // fork hash. It split from mainnet at the DAO fork, so the blocks before it
+    // are mainnet's and are not indexed again.
+    pub const ETHEREUM_CLASSIC: Network = Network {
+        genesis_hash: Self::ETHEREUM_MAINNET.genesis_hash,
+        head_td: 0,
+        fork_id: [0xfc64ec04, 1150000],
+        network_id: 1,
+        accepted_fork_hashes: &[0xbe46d57c],
+        dns_tree: Some("all.classic.etcdisco.net"),
+        bootnodes: CLASSIC_BOOTNODES,
+        stop_block: 1_920_000,
     };
 
     // Binance Mainnet
@@ -131,6 +155,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: None,
         bootnodes: BINANCE_BOOTNODES,
+        stop_block: 0,
     };
 
     // Polygon Mainnet
@@ -145,6 +170,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: Some("pos.polygon-peers.io"),
         bootnodes: POLYGON_BOOTNODES,
+        stop_block: 0,
     };
 
     // Base Mainnet
@@ -159,6 +185,7 @@ impl Network {
         accepted_fork_hashes: &[],
         dns_tree: None,
         bootnodes: &[],
+        stop_block: 0,
     };
 
     pub fn find(network: &str) -> Result<Self, Box<dyn Error>> {
@@ -170,6 +197,7 @@ impl Network {
             "ethereum_holesky" => Ok(Self::ETHEREUM_HOLESKY),
             "ethereum_hoodi" => Ok(Self::ETHEREUM_HOODI),
             "ethereum_mainnet" => Ok(Self::ETHEREUM_MAINNET),
+            "ethereum_classic" => Ok(Self::ETHEREUM_CLASSIC),
             "binance_mainnet" => Ok(Self::BINANCE_MAINNET),
             "polygon_mainnet" => Ok(Self::POLYGON_MAINNET),
             "base_mainnet" => Ok(Self::BASE_MAINNET),
@@ -186,6 +214,7 @@ impl Network {
             &Self::ETHEREUM_HOLESKY => "ethereum_holesky",
             &Self::ETHEREUM_HOODI => "ethereum_hoodi",
             &Self::ETHEREUM_MAINNET => "ethereum_mainnet",
+            &Self::ETHEREUM_CLASSIC => "ethereum_classic",
             &Self::BINANCE_MAINNET => "binance_mainnet",
             &Self::POLYGON_MAINNET => "polygon_mainnet",
             &Self::BASE_MAINNET => "base_mainnet",
@@ -196,6 +225,13 @@ impl Network {
 }
 
 // Bootnode lists copied from Puddle.
+// From core-geth (params/bootnodes_classic.go).
+pub const CLASSIC_BOOTNODES: &[&str] = &[
+    "enode://6b6ea53a498f0895c10269a3a74b777286bd467de6425c3b512740fcc7fbc8cd281dca4ab041dd97d62b38f3d0b5b05e71f48d28a3a2f4b5de40fe1f6bf05531@157.245.77.211:30303",
+    "enode://16264d48df59c3492972d96bf8a39dd38bab165809a3a4bb161859a337de38b2959cc98efea94355c7a7177cd020867c683aed934dbd6bc937d9e6b61d94d8d9@64.225.0.245:30303",
+    "enode://55bbc7f0ffa2af2ceca997ec195a98768144a163d389ae87b808dff8a861618405c2582451bbb6022e429e4bcd6b0e895e86160db6e93cdadbcfd80faacf6f06@164.90.144.106:30303",
+];
+
 pub const BINANCE_BOOTNODES: &[&str] = &[
     "enode://433c8bfdf53a3e2268ccb1b829e47f629793291cbddf0c76ae626da802f90532251fc558e2e0d10d6725e759088439bf1cd4714716b03a259a35d4b2e4acfa7f@52.69.102.73:30311",
     "enode://571bee8fb902a625942f10a770ccf727ae2ba1bab2a2b64e121594a99c9437317f6166a395670a00b7d93647eacafe598b6bbcef15b40b6d1a10243865a3e80f@35.73.84.120:30311",
