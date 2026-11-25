@@ -322,25 +322,17 @@ fn main() {
             cache.insert(first_number, blocks);
 
             // Drain whatever is now reachable from the current position (the last
-            // confirmed block, shared with forward sync). On bootstrap
-            // (last_block_number is None) the anchor is the highest key we've seen so
-            // far in the cache, since reverse sync dispatches strictly downward from
-            // the tip and that key can only ever be reached by the legitimate first batch.
+            // confirmed block, shared with forward sync). Reverse sync sets it to the
+            // block above its first batch before any batch is sent.
             loop {
                 let last_block_number = last_confirmed_db.lock().unwrap().as_ref().map(|(n, _)| *n);
-                let batch = match last_block_number {
-                    // Reverse sync descends (key = last - 1); forward sync ascends
-                    // (key = last + 1) — try both since this thread serves either.
-                    Some(last) => last
-                        .checked_sub(1)
+                // Reverse sync descends (key = last - 1); forward sync ascends
+                // (key = last + 1) — try both since this thread serves either.
+                let batch = last_block_number.and_then(|last| {
+                    last.checked_sub(1)
                         .and_then(|k| cache.remove(&k))
-                        .or_else(|| cache.remove(&(last + 1))),
-                    None => cache
-                        .keys()
-                        .next_back()
-                        .copied()
-                        .and_then(|k| cache.remove(&k)),
-                };
+                        .or_else(|| cache.remove(&(last + 1)))
+                });
                 let Some(batch) = batch else { break };
 
                 // Retry transient failures (e.g. Postgres restarting) with backoff.
@@ -619,10 +611,9 @@ fn main() {
                         continue;
                     };
                     if headers.is_empty() {
-                        // Stop requesting headers but let in-flight batches finish.
-                        warn!("No block headers received");
-                        pool.push_back(conn);
-                        done.store(true, Ordering::Relaxed);
+                        // We never ask below the stop block, so this peer just doesn't
+                        // have them. Drop it; the request goes to the next connection.
+                        warn!("No block headers received, dropping connection");
                         continue;
                     }
 
@@ -633,6 +624,13 @@ fn main() {
                         warn!("Invalid block headers from peer, dropping connection: {}", e);
                         continue;
                     }
+
+                    // Headers are requested one batch at a time, so the first batch is
+                    // the highest: tell the database thread where to start.
+                    last_confirmed
+                        .lock()
+                        .unwrap()
+                        .get_or_insert_with(|| (headers[0].number + 1, vec![]));
 
                     current_hash = headers.last().unwrap().parent_hash.to_vec();
                     let mut headers = headers;
